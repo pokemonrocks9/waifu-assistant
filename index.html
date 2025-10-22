@@ -290,22 +290,22 @@
             const leftHand = currentVrm.humanoid.getNormalizedBoneNode('leftHand');
             const rightHand = currentVrm.humanoid.getNormalizedBoneNode('rightHand');
 
-            // Arms down to sides (natural standing)
+            // Arms DOWN to sides (natural standing) - NEGATIVE to bring down!
             if (leftUpperArm) {
-                leftUpperArm.rotation.z = 0.3;  // Arm down
-                leftUpperArm.rotation.x = 0.1;  // Slight forward
+                leftUpperArm.rotation.z = -0.5;  // Arm DOWN (negative!)
+                leftUpperArm.rotation.x = 0.2;   // Slight forward
             }
             if (rightUpperArm) {
-                rightUpperArm.rotation.z = -0.3; // Arm down
-                rightUpperArm.rotation.x = 0.1;  // Slight forward
+                rightUpperArm.rotation.z = 0.5;  // Arm DOWN (positive for right side)
+                rightUpperArm.rotation.x = 0.2;  // Slight forward
             }
 
-            // Slight elbow bend
+            // Slight elbow bend (keep arms relaxed, not rigid)
             if (leftLowerArm) {
-                leftLowerArm.rotation.z = 0.2;
+                leftLowerArm.rotation.y = -0.3;
             }
             if (rightLowerArm) {
-                rightLowerArm.rotation.z = -0.2;
+                rightLowerArm.rotation.y = 0.3;
             }
 
             // Hands natural position

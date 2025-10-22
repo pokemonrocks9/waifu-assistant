@@ -274,6 +274,49 @@
             
             console.log('Idle animation initialized');
             idleAnimation.blinkTimer = Math.random() * idleAnimation.blinkInterval;
+
+            // Set natural standing pose (fix T-pose)
+            setNaturalPose();
+        }
+
+        function setNaturalPose() {
+            if (!currentVrm || !currentVrm.humanoid) return;
+
+            // Get bone references
+            const leftUpperArm = currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+            const rightUpperArm = currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+            const leftLowerArm = currentVrm.humanoid.getNormalizedBoneNode('leftLowerArm');
+            const rightLowerArm = currentVrm.humanoid.getNormalizedBoneNode('rightLowerArm');
+            const leftHand = currentVrm.humanoid.getNormalizedBoneNode('leftHand');
+            const rightHand = currentVrm.humanoid.getNormalizedBoneNode('rightHand');
+
+            // Arms down to sides (natural standing)
+            if (leftUpperArm) {
+                leftUpperArm.rotation.z = 0.3;  // Arm down
+                leftUpperArm.rotation.x = 0.1;  // Slight forward
+            }
+            if (rightUpperArm) {
+                rightUpperArm.rotation.z = -0.3; // Arm down
+                rightUpperArm.rotation.x = 0.1;  // Slight forward
+            }
+
+            // Slight elbow bend
+            if (leftLowerArm) {
+                leftLowerArm.rotation.z = 0.2;
+            }
+            if (rightLowerArm) {
+                rightLowerArm.rotation.z = -0.2;
+            }
+
+            // Hands natural position
+            if (leftHand) {
+                leftHand.rotation.z = 0.1;
+            }
+            if (rightHand) {
+                rightHand.rotation.z = -0.1;
+            }
+
+            console.log('Natural pose applied');
         }
 
         function updateIdleAnimation(deltaTime) {

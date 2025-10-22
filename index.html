@@ -133,8 +133,6 @@
         let idleAnimation = {
             breathingSpeed: 2.0,
             breathingAmount: 0.01,
-            swaySpeed: 1.5,
-            swayAmount: 0.05,
             blinkTimer: 0,
             blinkInterval: 3.0, // Blink every 3 seconds on average
             isBlinking: false,
@@ -308,11 +306,13 @@
                 rightLowerArm.rotation.y = 0.5;
             }
 
-            // Hands relaxed
+            // Hands relaxed with wrists tilted down
             if (leftHand) {
+                leftHand.rotation.x = -0.5;  // Tilt wrist down
                 leftHand.rotation.z = 0.2;
             }
             if (rightHand) {
+                rightHand.rotation.x = -0.5;  // Tilt wrist down
                 rightHand.rotation.z = -0.2;
             }
 
@@ -337,11 +337,6 @@
                     chest.rotation.x = breathingOffset * 0.5;
                 }
             }
-
-            // Gentle swaying (whole body)
-            const swayOffset = Math.sin(elapsedTime * idleAnimation.swaySpeed) * idleAnimation.swayAmount;
-            currentVrm.scene.rotation.z = swayOffset;
-            currentVrm.scene.position.x = swayOffset * 0.3;
 
             // Blinking animation
             idleAnimation.blinkTimer += deltaTime;

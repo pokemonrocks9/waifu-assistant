@@ -452,13 +452,13 @@
                 // Rotate head to look at cursor
                 if (head) {
                     head.rotation.y = currentLookAt.x * 0.7; // Left/right
-                    head.rotation.x = currentLookAt.y * 0.5; // Up/down
+                    head.rotation.x = -currentLookAt.y * 0.5; // Up/down (inverted)
                 }
                 
                 // Subtle neck movement
                 if (neck) {
                     neck.rotation.y = currentLookAt.x * 0.3;
-                    neck.rotation.x = currentLookAt.y * 0.2;
+                    neck.rotation.x = -currentLookAt.y * 0.2; // Up/down (inverted)
                 }
 
                 // Manual eye control (works for both VRM 0.x and 1.0)

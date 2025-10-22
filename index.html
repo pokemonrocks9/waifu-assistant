@@ -163,7 +163,7 @@
             writing-mode: vertical-rl;
             z-index: 99;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.3s ease;
         }
 
         #swipe-hint:hover {
@@ -172,14 +172,9 @@
         }
 
         #swipe-hint.hidden {
-            right: -50px;
-            opacity: 0;
-            pointer-events: none;
-        }
-
-        #character-menu.open ~ #swipe-hint {
-            right: -50px;
-            opacity: 0;
+            right: -100px !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
         }
 
         #error {
@@ -544,9 +539,11 @@
             if (menuOpen) {
                 menu.classList.add('open');
                 swipeHint.classList.add('hidden');
+                console.log('Menu opened, hint hidden');
             } else {
                 menu.classList.remove('open');
                 swipeHint.classList.remove('hidden');
+                console.log('Menu closed, hint visible');
             }
         }
 

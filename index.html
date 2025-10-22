@@ -131,12 +131,14 @@
         // Animation variables
         let clock = new THREE.Clock();
         let idleAnimation = {
-            breathingSpeed: 2.0,
-            breathingAmount: 0.01,
+            // === ANIMATION SETTINGS - EDIT THESE TO CUSTOMIZE ===
+            breathingSpeed: 2.0,      // How fast breathing cycles (higher = faster)
+            breathingAmount: 0.01,    // How much chest moves (higher = more movement)
             blinkTimer: 0,
-            blinkInterval: 3.0, // Blink every 3 seconds on average
+            blinkInterval: 3.0,       // Seconds between blinks (higher = less frequent)
             isBlinking: false,
-            blinkDuration: 0.15
+            blinkDuration: 0.15       // How long blink takes (higher = slower blink)
+            // ===================================================
         };
 
         function init() {
@@ -144,14 +146,19 @@
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x1a1a2e);
 
+            // ============ CAMERA SETUP - EDIT FOR DIFFERENT VIEW ============
             // Camera setup - adjusted for portrait mobile view
             camera = new THREE.PerspectiveCamera(
-                35,
+                35,  // Field of view (higher = wider view, lower = zoomed in)
                 window.innerWidth / window.innerHeight,
                 0.1,
                 100
             );
-            camera.position.set(0, 1.3, 2.5);
+            camera.position.set(0, 1.3, 2.5);  // (x, y, z) - adjust to frame character
+            // x: left/right (0 = centered)
+            // y: up/down (1.3 = eye level)
+            // z: distance from character (2.5 = close portrait, try 3-4 for full body)
+            // ================================================================
 
             // Renderer setup
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -190,9 +197,15 @@
 
         async function loadVRM() {
             try {
+                // ============ VRM MODEL URL - CHANGE TO USE YOUR OWN CHARACTER ============
                 // Using a public test VRM model
                 // Replace this URL with your own VRM model later
                 const modelUrl = 'https://pixiv.github.io/three-vrm/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm';
+                // To use your own model:
+                // 1. Upload your .vrm file to your GitHub repo (e.g., in a /models folder)
+                // 2. Replace URL above with: './models/your-character.vrm'
+                // Or host it elsewhere and use the full URL
+                // ===========================================================================
 
                 loadingDiv.querySelector('div:last-child').textContent = 'Downloading model...';
 
@@ -288,31 +301,43 @@
             const leftHand = currentVrm.humanoid.getNormalizedBoneNode('leftHand');
             const rightHand = currentVrm.humanoid.getNormalizedBoneNode('rightHand');
 
-            // Arms FULLY DOWN to sides - increased values
+            // ============ POSE CUSTOMIZATION - EDIT VALUES HERE ============
+            
+            // UPPER ARMS (shoulder to elbow)
+            // rotation.z: controls up/down movement (higher value = further down)
+            //   - Left arm: negative values lower arm, positive raises it
+            //   - Right arm: positive values lower arm, negative raises it
+            // rotation.x: controls forward/back (positive = forward, negative = back)
             if (leftUpperArm) {
-                leftUpperArm.rotation.z = -1.4;  // Further down
-                leftUpperArm.rotation.x = 0.3;   // Forward a bit
+                leftUpperArm.rotation.z = -1.4;  // -1.4 = arms at sides (try -1.0 to -2.0)
+                leftUpperArm.rotation.x = 0.3;   // 0.3 = slight forward (try 0 to 0.5)
             }
             if (rightUpperArm) {
-                rightUpperArm.rotation.z = 1.4;  // Further down
-                rightUpperArm.rotation.x = 0.3;  // Forward a bit
+                rightUpperArm.rotation.z = 1.4;  // Mirror of left arm
+                rightUpperArm.rotation.x = 0.3;  // Mirror of left arm
             }
 
-            // Elbow bend
+            // LOWER ARMS (elbow to wrist)
+            // rotation.y: controls elbow bend (higher = more bent)
             if (leftLowerArm) {
-                leftLowerArm.rotation.y = -0.5;
+                leftLowerArm.rotation.y = -0.5;  // -0.5 = slight bend (try -0.3 to -0.8)
             }
             if (rightLowerArm) {
-                rightLowerArm.rotation.y = 0.5;
+                rightLowerArm.rotation.y = 0.5;  // Mirror of left arm
             }
 
-            // Hands relaxed with subtle wrist tilt
+            // HANDS (wrist rotation)
+            // rotation.z: controls wrist tilt up/down
+            //   - Left hand: negative = tilt down, positive = tilt up
+            //   - Right hand: positive = tilt down, negative = tilt up
             if (leftHand) {
-                leftHand.rotation.z = -0.2;   // Subtle tilt down
+                leftHand.rotation.z = -0.2;   // -0.2 = subtle tilt down (try -0.1 to -0.5)
             }
             if (rightHand) {
-                rightHand.rotation.z = 0.2;   // Subtle tilt down
+                rightHand.rotation.z = 0.2;   // Mirror of left hand
             }
+            
+            // ================================================================
 
             console.log('Natural pose applied');
         }

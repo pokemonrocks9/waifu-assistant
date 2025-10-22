@@ -346,6 +346,12 @@
             // ===================================================
         };
 
+        // Cursor/Look-at tracking
+        let mousePosition = { x: 0, y: 0 };
+        let targetLookAt = { x: 0, y: 0 };
+        let currentLookAt = { x: 0, y: 0 };
+        const lookAtSpeed = 0.05; // How fast head follows cursor (lower = smoother)
+
         function init() {
             // Scene setup
             scene = new THREE.Scene();
@@ -396,6 +402,7 @@
             // Initialize character menu
             initCharacterMenu();
             setupSwipeDetection();
+            setupCursorTracking();
 
             // Load VRM model
             loadVRM();
@@ -403,6 +410,80 @@
             // Start animation loop
             animate();
         }
+
+        // ============ CURSOR TRACKING FUNCTIONS ============
+        function setupCursorTracking() {
+            // Mouse movement
+            document.addEventListener('mousemove', (e) => {
+                // Convert mouse position to normalized coordinates (-1 to 1)
+                mousePosition.x = (e.clientX / window.innerWidth) * 2 - 1;
+                mousePosition.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                
+                // Set target look position
+                targetLookAt.x = mousePosition.x * 0.5; // Reduce range for natural movement
+                targetLookAt.y = mousePosition.y * 0.3;
+            });
+
+            // Touch movement (mobile)
+            document.addEventListener('touchmove', (e) => {
+                if (e.touches[0]) {
+                    mousePosition.x = (e.touches[0].clientX / window.innerWidth) * 2 - 1;
+                    mousePosition.y = -(e.touches[0].clientY / window.innerHeight) * 2 + 1;
+                    
+                    targetLookAt.x = mousePosition.x * 0.5;
+                    targetLookAt.y = mousePosition.y * 0.3;
+                }
+            }, { passive: true });
+        }
+
+        function updateCursorTracking() {
+            if (!currentVrm || !currentVrm.humanoid) return;
+
+            // Smooth interpolation to target
+            currentLookAt.x += (targetLookAt.x - currentLookAt.x) * lookAtSpeed;
+            currentLookAt.y += (targetLookAt.y - currentLookAt.y) * lookAtSpeed;
+
+            // Get head and neck bones
+            const head = currentVrm.humanoid.getNormalizedBoneNode('head');
+            const neck = currentVrm.humanoid.getNormalizedBoneNode('neck');
+            
+            // Rotate head to look at cursor
+            if (head) {
+                head.rotation.y = currentLookAt.x * 0.7; // Left/right
+                head.rotation.x = currentLookAt.y * 0.5; // Up/down
+            }
+            
+            // Subtle neck movement
+            if (neck) {
+                neck.rotation.y = currentLookAt.x * 0.3;
+                neck.rotation.x = currentLookAt.y * 0.2;
+            }
+
+            // Eye tracking using VRM lookAt (if available)
+            if (currentVrm.lookAt) {
+                // VRM 1.0 has built-in eye tracking
+                const lookAtTarget = new THREE.Vector3(
+                    currentLookAt.x * 2,
+                    currentLookAt.y * 2 + 1.3, // Adjust to eye level
+                    2 // Distance in front
+                );
+                currentVrm.lookAt.target = lookAtTarget;
+            } else {
+                // Manual eye control for VRM 0.x
+                const leftEye = currentVrm.humanoid.getNormalizedBoneNode('leftEye');
+                const rightEye = currentVrm.humanoid.getNormalizedBoneNode('rightEye');
+                
+                if (leftEye) {
+                    leftEye.rotation.y = currentLookAt.x * 0.4;
+                    leftEye.rotation.x = -currentLookAt.y * 0.3;
+                }
+                if (rightEye) {
+                    rightEye.rotation.y = currentLookAt.x * 0.4;
+                    rightEye.rotation.x = -currentLookAt.y * 0.3;
+                }
+            }
+        }
+        // ==================================================
 
         // ============ CHARACTER MENU FUNCTIONS ============
         async function loadCharacterMetadata() {
@@ -854,6 +935,9 @@
             requestAnimationFrame(animate);
 
             const deltaTime = clock.getDelta();
+
+            // Update cursor tracking
+            updateCursorTracking();
 
             // Update idle animation
             updateIdleAnimation(deltaTime);

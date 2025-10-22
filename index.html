@@ -431,7 +431,9 @@
         let audioContext = null;
         let audioAnalyser = null;
         let audioDataArray = null;
+        let audioSource = null;
         let currentUtterance = null;
+        let lipSyncInterval = null;
         // =================================================
 
         function init() {
@@ -527,9 +529,7 @@
             if (isSpeaking) {
                 console.log('Already speaking, cancelling...');
                 window.speechSynthesis.cancel();
-                isSpeaking = false;
-                document.getElementById('speak-btn').classList.remove('speaking');
-                document.getElementById('speak-btn').textContent = 'Speak';
+                stopLipSync();
                 return;
             }
 
@@ -549,7 +549,8 @@
                 voice.name.includes('Female') ||
                 voice.name.includes('Samantha') ||
                 voice.name.includes('Victoria') ||
-                voice.name.includes('Google UK English Female')
+                voice.name.includes('Google UK English Female') ||
+                voice.name.includes('Google US English Female')
             );
             if (femaleVoice) {
                 currentUtterance.voice = femaleVoice;
@@ -561,69 +562,171 @@
             // Start lip-sync animation
             currentUtterance.onstart = () => {
                 console.log('Speech started');
-                startLipSync();
+                startLipSync(text);
             };
 
             currentUtterance.onend = () => {
                 console.log('Speech ended');
-                isSpeaking = false;
-                speakBtn.classList.remove('speaking');
-                speakBtn.textContent = 'Speak';
                 stopLipSync();
             };
 
             currentUtterance.onerror = (e) => {
                 console.error('Speech error:', e);
-                isSpeaking = false;
-                speakBtn.classList.remove('speaking');
-                speakBtn.textContent = 'Speak';
                 stopLipSync();
             };
 
             window.speechSynthesis.speak(currentUtterance);
         }
 
-        function startLipSync() {
-            console.log('Lip-sync started');
-            // Lip-sync animation will be handled in updateLipSync()
+        function startLipSync(text) {
+            console.log('Starting sophisticated lip-sync for:', text);
+            
+            // Analyze text for phonemes and create timing
+            const phonemeTimings = analyzeTextForPhonemes(text);
+            let phonemeIndex = 0;
+            const startTime = Date.now();
+
+            // Update mouth shapes based on phoneme timing
+            lipSyncInterval = setInterval(() => {
+                if (!isSpeaking) {
+                    clearInterval(lipSyncInterval);
+                    return;
+                }
+
+                const elapsed = Date.now() - startTime;
+                
+                // Find current phoneme
+                while (phonemeIndex < phonemeTimings.length && 
+                       phonemeTimings[phonemeIndex].time < elapsed) {
+                    phonemeIndex++;
+                }
+
+                if (phonemeIndex < phonemeTimings.length) {
+                    const phoneme = phonemeTimings[phonemeIndex];
+                    setMouthShape(phoneme.shape, phoneme.amount);
+                } else {
+                    // End of speech
+                    setMouthShape('closed', 0);
+                }
+            }, 16); // ~60fps
         }
 
         function stopLipSync() {
-            console.log('Lip-sync stopped');
+            isSpeaking = false;
+            const speakBtn = document.getElementById('speak-btn');
+            speakBtn.classList.remove('speaking');
+            speakBtn.textContent = 'Speak';
+            
+            if (lipSyncInterval) {
+                clearInterval(lipSyncInterval);
+                lipSyncInterval = null;
+            }
+            
             // Close mouth
-            if (currentVrm && currentVrm.expressionManager) {
-                try {
-                    currentVrm.expressionManager.setValue('aa', 0);
-                    currentVrm.expressionManager.setValue('ih', 0);
-                    currentVrm.expressionManager.setValue('ou', 0);
-                    currentVrm.expressionManager.setValue('ee', 0);
-                    currentVrm.expressionManager.setValue('oh', 0);
-                } catch (e) {
-                    // Expression might not exist
+            setMouthShape('closed', 0);
+        }
+
+        function analyzeTextForPhonemes(text) {
+            // Analyze text and create phoneme timing estimates
+            const words = text.toLowerCase().split(/\s+/);
+            const phonemes = [];
+            let time = 0;
+            const msPerChar = 80; // Approximate timing
+
+            words.forEach((word, wordIndex) => {
+                for (let i = 0; i < word.length; i++) {
+                    const char = word[i];
+                    const nextChar = word[i + 1] || '';
+                    
+                    // Map characters to mouth shapes
+                    let shape = 'closed';
+                    let amount = 0.5;
+
+                    // Vowels - open mouth shapes
+                    if ('aā'.includes(char)) {
+                        shape = 'aa'; // Wide open
+                        amount = 0.8;
+                    } else if ('eē'.includes(char)) {
+                        shape = 'ee'; // Smile
+                        amount = 0.6;
+                    } else if ('iī'.includes(char)) {
+                        shape = 'ih'; // Small open
+                        amount = 0.5;
+                    } else if ('oōuū'.includes(char)) {
+                        shape = 'ou'; // Round
+                        amount = 0.7;
+                    }
+                    // Consonants
+                    else if ('bpm'.includes(char)) {
+                        shape = 'closed'; // Lips together
+                        amount = 0.1;
+                    } else if ('fv'.includes(char)) {
+                        shape = 'ff'; // Lip bite
+                        amount = 0.4;
+                    } else if ('td'.includes(char)) {
+                        shape = 'dd'; // Teeth
+                        amount = 0.3;
+                    } else if ('szcx'.includes(char)) {
+                        shape = 'ss'; // Hiss
+                        amount = 0.3;
+                    } else if ('lnr'.includes(char)) {
+                        shape = 'aa'; // Slight open
+                        amount = 0.4;
+                    }
+
+                    phonemes.push({
+                        char: char,
+                        shape: shape,
+                        amount: amount,
+                        time: time
+                    });
+
+                    time += msPerChar;
                 }
+
+                // Add pause between words
+                phonemes.push({
+                    char: ' ',
+                    shape: 'closed',
+                    amount: 0,
+                    time: time
+                });
+                time += msPerChar * 0.5;
+            });
+
+            return phonemes;
+        }
+
+        function setMouthShape(shape, amount) {
+            if (!currentVrm || !currentVrm.expressionManager) return;
+
+            try {
+                // Reset all mouth shapes
+                const allShapes = ['aa', 'ih', 'ou', 'ee', 'oh', 'a', 'i', 'u', 'e', 'o'];
+                allShapes.forEach(s => {
+                    try {
+                        currentVrm.expressionManager.setValue(s, 0);
+                    } catch (e) {}
+                });
+
+                // Set target shape
+                if (shape !== 'closed') {
+                    const shapeVariants = [shape, shape.toUpperCase()];
+                    for (const variant of shapeVariants) {
+                        try {
+                            currentVrm.expressionManager.setValue(variant, amount);
+                            break;
+                        } catch (e) {}
+                    }
+                }
+            } catch (error) {
+                // Expressions not available
             }
         }
 
         function updateLipSync() {
-            if (!isSpeaking || !currentVrm || !currentVrm.expressionManager) return;
-
-            try {
-                // Simple lip-sync: oscillate mouth open/close while speaking
-                const time = clock.getElapsedTime();
-                const mouthOpen = (Math.sin(time * 30) + 1) / 2; // Fast oscillation
-                
-                // Try common mouth shape names
-                const mouthShapes = ['aa', 'a', 'A', 'mouth_a'];
-                for (const shape of mouthShapes) {
-                    try {
-                        currentVrm.expressionManager.setValue(shape, mouthOpen * 0.7);
-                    } catch (e) {
-                        // Shape doesn't exist
-                    }
-                }
-            } catch (error) {
-                console.error('Lip-sync error:', error);
-            }
+            // Lip-sync is now handled by interval in startLipSync
+            // This function kept for compatibility but not used
         }
 
         // Load voices when they're ready

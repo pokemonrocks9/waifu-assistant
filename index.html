@@ -71,6 +71,70 @@
             z-index: 5;
         }
 
+        /* ========== TEMPORARY TEXT INPUT - REMOVE WHEN MICROPHONE ADDED ========== */
+        /* This is a placeholder for testing TTS and lip-sync */
+        /* Will be replaced with microphone button in future phase */
+        #text-input-container {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 600px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        #text-input {
+            flex: 1;
+            background: rgba(20, 20, 40, 0.95);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            padding: 15px 20px;
+            color: white;
+            font-size: 16px;
+            outline: none;
+            backdrop-filter: blur(10px);
+        }
+
+        #text-input:focus {
+            border-color: #00d4ff;
+        }
+
+        #text-input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        #speak-btn {
+            background: rgba(0, 212, 255, 0.8);
+            border: none;
+            border-radius: 25px;
+            padding: 15px 30px;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+        }
+
+        #speak-btn:hover {
+            background: rgba(0, 212, 255, 1);
+            transform: scale(1.05);
+        }
+
+        #speak-btn:disabled {
+            background: rgba(100, 100, 100, 0.5);
+            cursor: not-allowed;
+            transform: scale(1);
+        }
+
+        #speak-btn.speaking {
+            background: rgba(255, 100, 100, 0.8);
+        }
+        /* ======================================================================== */
+
         /* Character Selector Menu */
         #character-menu {
             position: fixed;
@@ -265,7 +329,15 @@
 
     <div id="error"></div>
 
-    <div id="controls">
+    <!-- ========== TEMPORARY TEXT INPUT - REMOVE WHEN MICROPHONE ADDED ========== -->
+    <!-- This is for testing TTS and lip-sync before implementing voice input -->
+    <div id="text-input-container">
+        <input type="text" id="text-input" placeholder="Type something for her to say..." />
+        <button id="speak-btn">Speak</button>
+    </div>
+    <!-- ======================================================================== -->
+
+    <div id="controls" style="display: none;">
         Idle Animation Active
     </div>
 
@@ -353,6 +425,15 @@
         const lookAtSpeed = 0.05; // How fast head follows cursor (lower = smoother)
         let lookAtTarget = null; // THREE.Object3D for VRM lookAt system
 
+        // ========== TEXT-TO-SPEECH AND LIP-SYNC ==========
+        // NOTE: This will be replaced with microphone input later
+        let isSpeaking = false;
+        let audioContext = null;
+        let audioAnalyser = null;
+        let audioDataArray = null;
+        let currentUtterance = null;
+        // =================================================
+
         function init() {
             // Scene setup
             scene = new THREE.Scene();
@@ -404,6 +485,7 @@
             initCharacterMenu();
             setupSwipeDetection();
             setupCursorTracking();
+            setupTextToSpeech(); // TEMPORARY - for testing lip-sync
 
             // Load VRM model
             loadVRM();
@@ -411,6 +493,146 @@
             // Start animation loop
             animate();
         }
+
+        // ============ TEXT-TO-SPEECH AND LIP-SYNC FUNCTIONS ============
+        // NOTE: This is TEMPORARY for testing - will be replaced with microphone input
+        
+        function setupTextToSpeech() {
+            const textInput = document.getElementById('text-input');
+            const speakBtn = document.getElementById('speak-btn');
+
+            // Initialize Web Audio API for lip-sync
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Speak button click
+            speakBtn.addEventListener('click', () => {
+                const text = textInput.value.trim();
+                if (text) {
+                    speak(text);
+                }
+            });
+
+            // Enter key to speak
+            textInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    const text = textInput.value.trim();
+                    if (text) {
+                        speak(text);
+                    }
+                }
+            });
+        }
+
+        function speak(text) {
+            if (isSpeaking) {
+                console.log('Already speaking, cancelling...');
+                window.speechSynthesis.cancel();
+                isSpeaking = false;
+                document.getElementById('speak-btn').classList.remove('speaking');
+                document.getElementById('speak-btn').textContent = 'Speak';
+                return;
+            }
+
+            console.log('Speaking:', text);
+            isSpeaking = true;
+            const speakBtn = document.getElementById('speak-btn');
+            speakBtn.classList.add('speaking');
+            speakBtn.textContent = 'Stop';
+
+            // Create speech utterance
+            currentUtterance = new SpeechSynthesisUtterance(text);
+            
+            // Configure voice (try to use a female voice)
+            const voices = window.speechSynthesis.getVoices();
+            const femaleVoice = voices.find(voice => 
+                voice.name.includes('female') || 
+                voice.name.includes('Female') ||
+                voice.name.includes('Samantha') ||
+                voice.name.includes('Victoria') ||
+                voice.name.includes('Google UK English Female')
+            );
+            if (femaleVoice) {
+                currentUtterance.voice = femaleVoice;
+            }
+            
+            currentUtterance.rate = 1.0;
+            currentUtterance.pitch = 1.2;
+
+            // Start lip-sync animation
+            currentUtterance.onstart = () => {
+                console.log('Speech started');
+                startLipSync();
+            };
+
+            currentUtterance.onend = () => {
+                console.log('Speech ended');
+                isSpeaking = false;
+                speakBtn.classList.remove('speaking');
+                speakBtn.textContent = 'Speak';
+                stopLipSync();
+            };
+
+            currentUtterance.onerror = (e) => {
+                console.error('Speech error:', e);
+                isSpeaking = false;
+                speakBtn.classList.remove('speaking');
+                speakBtn.textContent = 'Speak';
+                stopLipSync();
+            };
+
+            window.speechSynthesis.speak(currentUtterance);
+        }
+
+        function startLipSync() {
+            console.log('Lip-sync started');
+            // Lip-sync animation will be handled in updateLipSync()
+        }
+
+        function stopLipSync() {
+            console.log('Lip-sync stopped');
+            // Close mouth
+            if (currentVrm && currentVrm.expressionManager) {
+                try {
+                    currentVrm.expressionManager.setValue('aa', 0);
+                    currentVrm.expressionManager.setValue('ih', 0);
+                    currentVrm.expressionManager.setValue('ou', 0);
+                    currentVrm.expressionManager.setValue('ee', 0);
+                    currentVrm.expressionManager.setValue('oh', 0);
+                } catch (e) {
+                    // Expression might not exist
+                }
+            }
+        }
+
+        function updateLipSync() {
+            if (!isSpeaking || !currentVrm || !currentVrm.expressionManager) return;
+
+            try {
+                // Simple lip-sync: oscillate mouth open/close while speaking
+                const time = clock.getElapsedTime();
+                const mouthOpen = (Math.sin(time * 30) + 1) / 2; // Fast oscillation
+                
+                // Try common mouth shape names
+                const mouthShapes = ['aa', 'a', 'A', 'mouth_a'];
+                for (const shape of mouthShapes) {
+                    try {
+                        currentVrm.expressionManager.setValue(shape, mouthOpen * 0.7);
+                    } catch (e) {
+                        // Shape doesn't exist
+                    }
+                }
+            } catch (error) {
+                console.error('Lip-sync error:', error);
+            }
+        }
+
+        // Load voices when they're ready
+        if (typeof speechSynthesis !== 'undefined') {
+            speechSynthesis.onvoiceschanged = () => {
+                console.log('Voices loaded:', speechSynthesis.getVoices().length);
+            };
+        }
+        // ================================================================
 
         // ============ CURSOR TRACKING FUNCTIONS ============
         function setupCursorTracking() {
@@ -945,6 +1167,9 @@
 
             // Update cursor tracking
             updateCursorTracking();
+
+            // Update lip-sync (TEMPORARY - for testing)
+            updateLipSync();
 
             // Update idle animation
             updateIdleAnimation(deltaTime);

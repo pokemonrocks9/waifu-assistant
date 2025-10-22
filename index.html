@@ -554,9 +554,14 @@
 
             // Desktop button click handler
             if (desktopBtn) {
-                desktopBtn.addEventListener('click', () => {
+                console.log('Desktop button found, adding click listener');
+                desktopBtn.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent other handlers
+                    console.log('Desktop button clicked!');
                     toggleMenu();
                 });
+            } else {
+                console.log('Desktop button NOT found');
             }
 
             // Auto-remove tutorial hint after 5 seconds
@@ -591,7 +596,8 @@
 
             // Click outside menu to close
             document.addEventListener('click', (e) => {
-                if (menuOpen && !menu.contains(e.target)) {
+                const clickedBtn = e.target.id === 'desktop-menu-btn' || e.target.closest('#desktop-menu-btn');
+                if (menuOpen && !menu.contains(e.target) && !clickedBtn) {
                     toggleMenu();
                 }
             });
@@ -681,6 +687,8 @@
             const menu = document.getElementById('character-menu');
             
             menuOpen = !menuOpen;
+            
+            console.log('toggleMenu called, menuOpen:', menuOpen);
             
             if (menuOpen) {
                 menu.classList.add('open');

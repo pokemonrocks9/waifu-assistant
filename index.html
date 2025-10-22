@@ -308,10 +308,10 @@
 
             // Hands relaxed with wrists tilted down
             if (leftHand) {
-                leftHand.rotation.z = 0.5;   // Tilt wrist down (positive for left)
+                leftHand.rotation.z = -0.5;   // Tilt wrist down (negative for left)
             }
             if (rightHand) {
-                rightHand.rotation.z = -0.5;  // Tilt wrist down (negative for right)
+                rightHand.rotation.z = 0.5;  // Tilt wrist down (positive for right)
             }
 
             console.log('Natural pose applied');

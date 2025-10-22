@@ -290,11 +290,11 @@
 
             // Arms FULLY DOWN to sides - increased values
             if (leftUpperArm) {
-                leftUpperArm.rotation.z = -1.2;  // Way down
+                leftUpperArm.rotation.z = -1.4;  // Further down
                 leftUpperArm.rotation.x = 0.3;   // Forward a bit
             }
             if (rightUpperArm) {
-                rightUpperArm.rotation.z = 1.2;  // Way down
+                rightUpperArm.rotation.z = 1.4;  // Further down
                 rightUpperArm.rotation.x = 0.3;  // Forward a bit
             }
 
@@ -306,12 +306,12 @@
                 rightLowerArm.rotation.y = 0.5;
             }
 
-            // Hands relaxed with wrists tilted down
+            // Hands relaxed with subtle wrist tilt
             if (leftHand) {
-                leftHand.rotation.z = -0.5;   // Tilt wrist down (negative for left)
+                leftHand.rotation.z = -0.2;   // Subtle tilt down
             }
             if (rightHand) {
-                rightHand.rotation.z = 0.5;  // Tilt wrist down (positive for right)
+                rightHand.rotation.z = 0.2;   // Subtle tilt down
             }
 
             console.log('Natural pose applied');

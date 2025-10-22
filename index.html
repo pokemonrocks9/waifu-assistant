@@ -104,7 +104,7 @@
     <div id="error"></div>
 
     <div id="controls">
-        Drag to rotate • Pinch/Scroll to zoom
+        Idle Animation Active
     </div>
 
     <!-- Three.js and VRM Libraries -->
@@ -120,7 +120,6 @@
 
     <script type="module">
         import * as THREE from 'three';
-        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 
@@ -128,6 +127,19 @@
         const container = document.getElementById('canvas-container');
         const loadingDiv = document.getElementById('loading');
         const errorDiv = document.getElementById('error');
+
+        // Animation variables
+        let clock = new THREE.Clock();
+        let idleAnimation = {
+            breathingSpeed: 2.0,
+            breathingAmount: 0.01,
+            swaySpeed: 1.5,
+            swayAmount: 0.05,
+            blinkTimer: 0,
+            blinkInterval: 3.0, // Blink every 3 seconds on average
+            isBlinking: false,
+            blinkDuration: 0.15
+        };
 
         function init() {
             // Scene setup
@@ -158,15 +170,15 @@
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
             scene.add(ambientLight);
 
-            // Controls
-            controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
-            controls.dampingFactor = 0.05;
-            controls.target.set(0, 1.2, 0);
-            controls.minDistance = 1;
-            controls.maxDistance = 5;
-            controls.enablePan = false;
-            controls.update();
+            // Controls disabled - character will animate on its own
+            // controls = new OrbitControls(camera, renderer.domElement);
+            // controls.enableDamping = true;
+            // controls.dampingFactor = 0.05;
+            // controls.target.set(0, 1.2, 0);
+            // controls.minDistance = 1;
+            // controls.maxDistance = 5;
+            // controls.enablePan = false;
+            // controls.update();
 
             // Handle window resize
             window.addEventListener('resize', onWindowResize);
@@ -217,10 +229,16 @@
 
                             currentVrm = vrm;
 
-                            // Rotate model to face camera
-                            vrm.scene.rotation.y = Math.PI;
+                            // Face the camera (no rotation needed - default is facing forward)
+                            vrm.scene.rotation.y = 0;
+
+                            // Position character
+                            vrm.scene.position.set(0, 0, 0);
 
                             scene.add(vrm.scene);
+
+                            // Initialize idle animation
+                            initIdleAnimation();
 
                             // Hide loading indicator
                             loadingDiv.style.display = 'none';
@@ -251,6 +269,81 @@
             }
         }
 
+        function initIdleAnimation() {
+            if (!currentVrm) return;
+            
+            console.log('Idle animation initialized');
+            idleAnimation.blinkTimer = Math.random() * idleAnimation.blinkInterval;
+        }
+
+        function updateIdleAnimation(deltaTime) {
+            if (!currentVrm) return;
+
+            const elapsedTime = clock.getElapsedTime();
+
+            // Breathing animation (chest/spine movement)
+            const breathingOffset = Math.sin(elapsedTime * idleAnimation.breathingSpeed) * idleAnimation.breathingAmount;
+            if (currentVrm.humanoid) {
+                const spine = currentVrm.humanoid.getNormalizedBoneNode('spine');
+                const chest = currentVrm.humanoid.getNormalizedBoneNode('chest');
+                
+                if (spine) {
+                    spine.position.y = breathingOffset;
+                }
+                if (chest) {
+                    chest.rotation.x = breathingOffset * 0.5;
+                }
+            }
+
+            // Gentle swaying (whole body)
+            const swayOffset = Math.sin(elapsedTime * idleAnimation.swaySpeed) * idleAnimation.swayAmount;
+            currentVrm.scene.rotation.z = swayOffset;
+            currentVrm.scene.position.x = swayOffset * 0.3;
+
+            // Blinking animation
+            idleAnimation.blinkTimer += deltaTime;
+            
+            if (!idleAnimation.isBlinking && idleAnimation.blinkTimer >= idleAnimation.blinkInterval) {
+                // Start blink
+                idleAnimation.isBlinking = true;
+                idleAnimation.blinkTimer = 0;
+            }
+
+            if (idleAnimation.isBlinking) {
+                const blinkProgress = idleAnimation.blinkTimer / idleAnimation.blinkDuration;
+                
+                if (blinkProgress < 0.5) {
+                    // Closing eyes
+                    const closeFactor = blinkProgress * 2; // 0 to 1
+                    setEyeBlinkValue(closeFactor);
+                } else if (blinkProgress < 1.0) {
+                    // Opening eyes
+                    const openFactor = 1 - ((blinkProgress - 0.5) * 2); // 1 to 0
+                    setEyeBlinkValue(openFactor);
+                } else {
+                    // Blink complete
+                    setEyeBlinkValue(0);
+                    idleAnimation.isBlinking = false;
+                    idleAnimation.blinkTimer = Math.random() * idleAnimation.blinkInterval;
+                }
+            }
+        }
+
+        function setEyeBlinkValue(value) {
+            if (!currentVrm || !currentVrm.expressionManager) return;
+            
+            // Try common blink expression names
+            const blinkExpressions = ['blink', 'blinkLeft', 'blinkRight', 'Blink', 'blink_L', 'blink_R'];
+            
+            for (const expressionName of blinkExpressions) {
+                try {
+                    currentVrm.expressionManager.setValue(expressionName, value);
+                } catch (e) {
+                    // Expression might not exist, that's okay
+                }
+            }
+        }
+
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -260,13 +353,17 @@
         function animate() {
             requestAnimationFrame(animate);
 
+            const deltaTime = clock.getDelta();
+
+            // Update idle animation
+            updateIdleAnimation(deltaTime);
+
             // Update VRM if loaded
             if (currentVrm) {
-                const deltaTime = 0.016; // Approximate 60fps
                 currentVrm.update(deltaTime);
             }
 
-            controls.update();
+            // controls.update(); // Removed - no controls anymore
             renderer.render(scene, camera);
         }
 

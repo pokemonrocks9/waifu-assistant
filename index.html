@@ -536,14 +536,22 @@
             
             menuOpen = !menuOpen;
             
+            console.log('Toggle menu called. Menu open:', menuOpen);
+            console.log('Swipe hint element:', swipeHint);
+            console.log('Swipe hint classes before:', swipeHint.className);
+            
             if (menuOpen) {
                 menu.classList.add('open');
                 swipeHint.classList.add('hidden');
-                console.log('Menu opened, hint hidden');
+                swipeHint.style.display = 'none'; // Force hide with inline style
+                console.log('Menu opened, hint should be hidden');
+                console.log('Swipe hint classes after:', swipeHint.className);
             } else {
                 menu.classList.remove('open');
                 swipeHint.classList.remove('hidden');
-                console.log('Menu closed, hint visible');
+                swipeHint.style.display = ''; // Remove inline style
+                console.log('Menu closed, hint should be visible');
+                console.log('Swipe hint classes after:', swipeHint.className);
             }
         }
 

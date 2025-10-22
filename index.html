@@ -149,32 +149,84 @@
             font-size: 12px;
         }
 
-        /* Swipe hint indicator */
-        #swipe-hint {
+        /* Tutorial hint - shows on first load */
+        #tutorial-hint {
             position: fixed;
-            right: 0;
+            right: 20px;
             top: 50%;
             transform: translateY(-50%);
-            background: rgba(0, 212, 255, 0.8);
+            background: rgba(0, 212, 255, 0.95);
             color: white;
-            padding: 40px 15px;
-            border-radius: 10px 0 0 10px;
-            font-size: 12px;
-            writing-mode: vertical-rl;
-            z-index: 99;
+            padding: 20px 25px;
+            border-radius: 15px;
+            font-size: 16px;
+            z-index: 150;
+            animation: slideInRight 0.5s ease, fadeOut 0.5s ease 4.5s forwards;
+            pointer-events: none;
+            box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
+        }
+
+        #tutorial-hint::before {
+            content: '👉';
+            font-size: 24px;
+            margin-right: 10px;
+        }
+
+        @keyframes slideInRight {
+            from {
+                right: -300px;
+                opacity: 0;
+            }
+            to {
+                right: 20px;
+                opacity: 1;
+            }
+        }
+
+        @keyframes fadeOut {
+            to {
+                opacity: 0;
+                right: -300px;
+            }
+        }
+
+        /* Desktop-only menu button */
+        #desktop-menu-btn {
+            display: none; /* Hidden on mobile */
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: transparent;
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 24px;
             cursor: pointer;
-            transition: all 0.3s ease;
+            z-index: 50;
+            transition: all 0.3s;
+            backdrop-filter: blur(5px);
+            line-height: 1;
         }
 
-        #swipe-hint:hover {
-            padding-right: 20px;
-            background: rgba(0, 212, 255, 1);
+        #desktop-menu-btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.8);
+            transform: scale(1.05);
         }
 
-        #swipe-hint.hidden {
-            right: -100px !important;
-            opacity: 0 !important;
-            pointer-events: none !important;
+        #desktop-menu-btn::before {
+            content: '☰';
+        }
+
+        /* Show button only on desktop (>768px width) */
+        @media (min-width: 768px) {
+            #desktop-menu-btn {
+                display: block;
+            }
+            #tutorial-hint {
+                display: none; /* Don't show tutorial on desktop */
+            }
         }
 
         #error {
@@ -213,6 +265,14 @@
         Idle Animation Active
     </div>
 
+    <!-- Tutorial hint - shows on first load (mobile only) -->
+    <div id="tutorial-hint">
+        Swipe from right edge to open menu
+    </div>
+
+    <!-- Desktop menu button (desktop only) -->
+    <button id="desktop-menu-btn"></button>
+
     <!-- Character Selector Menu -->
     <div id="character-menu">
         <h2>Characters</h2>
@@ -220,8 +280,6 @@
             <!-- Characters will be populated by JavaScript -->
         </div>
     </div>
-    
-    <div id="swipe-hint">◀ Swipe</div>
 
     <!-- Three.js and VRM Libraries -->
     <script type="importmap">
@@ -412,7 +470,22 @@
         function initCharacterMenu() {
             const characterList = document.getElementById('character-list');
             const menu = document.getElementById('character-menu');
-            const swipeHint = document.getElementById('swipe-hint');
+            const desktopBtn = document.getElementById('desktop-menu-btn');
+            const tutorialHint = document.getElementById('tutorial-hint');
+
+            // Desktop button click handler
+            if (desktopBtn) {
+                desktopBtn.addEventListener('click', () => {
+                    toggleMenu();
+                });
+            }
+
+            // Auto-remove tutorial hint after 5 seconds
+            if (tutorialHint) {
+                setTimeout(() => {
+                    tutorialHint.remove();
+                }, 5000);
+            }
 
             // Populate character list
             characters.forEach(char => {
@@ -437,14 +510,9 @@
                 characterList.appendChild(item);
             });
 
-            // Click on hint to open menu
-            swipeHint.addEventListener('click', () => {
-                toggleMenu();
-            });
-
             // Click outside menu to close
             document.addEventListener('click', (e) => {
-                if (menuOpen && !menu.contains(e.target) && !swipeHint.contains(e.target)) {
+                if (menuOpen && !menu.contains(e.target)) {
                     toggleMenu();
                 }
             });
@@ -532,26 +600,13 @@
 
         function toggleMenu() {
             const menu = document.getElementById('character-menu');
-            const swipeHint = document.getElementById('swipe-hint');
             
             menuOpen = !menuOpen;
             
-            console.log('Toggle menu called. Menu open:', menuOpen);
-            console.log('Swipe hint element:', swipeHint);
-            console.log('Swipe hint classes before:', swipeHint.className);
-            
             if (menuOpen) {
                 menu.classList.add('open');
-                swipeHint.classList.add('hidden');
-                swipeHint.style.display = 'none'; // Force hide with inline style
-                console.log('Menu opened, hint should be hidden');
-                console.log('Swipe hint classes after:', swipeHint.className);
             } else {
                 menu.classList.remove('open');
-                swipeHint.classList.remove('hidden');
-                swipeHint.style.display = ''; // Remove inline style
-                console.log('Menu closed, hint should be visible');
-                console.log('Swipe hint classes after:', swipeHint.className);
             }
         }
 

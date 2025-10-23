@@ -427,6 +427,25 @@
 
         // ========== TEXT-TO-SPEECH AND LIP-SYNC ==========
         // NOTE: This will be replaced with microphone input later
+        // TODO: When moving from GitHub Pages to homelab hosting:
+        //   1. Replace browser TTS with Coqui TTS or Piper on homelab server
+        //   2. Set up Python FastAPI backend on homelab
+        //   3. Stream audio from server via WebSocket
+        //   4. Benefits: Natural voices, consistent across devices, customizable
+        //   5. Recommended: Coqui TTS (tts_models/en/vctk/vits) or Piper for speed
+        // TODO: Add voice selector in settings menu:
+        //   - Dropdown with cute/soft voice options (see VOICE_OPTIONS.md)
+        //   - Voices: en_US-lessac-medium, en_US-amy-medium, en_GB-jenny_dioco-medium
+        //   - Test button to preview each voice
+        //   - Save selection to localStorage
+        //   - Pass selected voice to backend TTS endpoint
+        
+        // Backend connection settings
+        const BACKEND_URL = 'wss://waifubackend.pokymedia.xyz/ws'; // WebSocket
+        const BACKEND_API = 'https://waifubackend.pokymedia.xyz'; // HTTP API
+        let ws = null;
+        let isConnectedToBackend = false;
+        
         let isSpeaking = false;
         let audioContext = null;
         let audioAnalyser = null;
@@ -496,6 +515,130 @@
             animate();
         }
 
+        // ============ BACKEND CONNECTION FUNCTIONS ============
+        
+        function connectToBackend() {
+            console.log('Connecting to backend:', BACKEND_URL);
+            
+            ws = new WebSocket(BACKEND_URL);
+            
+            ws.onopen = () => {
+                console.log('Connected to backend!');
+                isConnectedToBackend = true;
+                updateConnectionStatus('Connected');
+            };
+            
+            ws.onmessage = async (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received from backend:', data);
+                
+                if (data.type === 'connected') {
+                    console.log('Backend welcome:', data.message);
+                } else if (data.type === 'response') {
+                    // Got AI response - speak it
+                    await speakWithBackend(data.text);
+                } else if (data.type === 'error') {
+                    console.error('Backend error:', data.text);
+                    // Fallback to browser TTS
+                    speak(data.text);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                isConnectedToBackend = false;
+                updateConnectionStatus('Error');
+            };
+            
+            ws.onclose = () => {
+                console.log('Disconnected from backend');
+                isConnectedToBackend = false;
+                updateConnectionStatus('Disconnected');
+                
+                // Try to reconnect after 5 seconds
+                setTimeout(() => {
+                    console.log('Attempting to reconnect...');
+                    connectToBackend();
+                }, 5000);
+            };
+        }
+        
+        function sendMessageToBackend(text) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'message',
+                    text: text
+                }));
+                return true;
+            } else {
+                console.error('WebSocket not connected');
+                return false;
+            }
+        }
+        
+        async function speakWithBackend(text) {
+            console.log('Speaking with backend TTS:', text);
+            isSpeaking = true;
+            const speakBtn = document.getElementById('speak-btn');
+            speakBtn.classList.add('speaking');
+            speakBtn.textContent = 'Stop';
+            
+            try {
+                // Get audio from backend
+                const response = await fetch(`${BACKEND_API}/api/tts`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ text: text })
+                });
+                
+                if (response.ok) {
+                    const audioBlob = await response.blob();
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
+                    
+                    // Start lip-sync when audio starts
+                    audio.onplay = () => {
+                        startLipSync(text);
+                    };
+                    
+                    audio.onended = () => {
+                        isSpeaking = false;
+                        speakBtn.classList.remove('speaking');
+                        speakBtn.textContent = 'Speak';
+                        stopLipSync();
+                        URL.revokeObjectURL(audioUrl);
+                    };
+                    
+                    audio.onerror = (e) => {
+                        console.error('Audio playback error:', e);
+                        stopLipSync();
+                        isSpeaking = false;
+                        speakBtn.classList.remove('speaking');
+                        speakBtn.textContent = 'Speak';
+                    };
+                    
+                    await audio.play();
+                } else {
+                    console.error('TTS request failed:', response.status);
+                    // Fallback to browser TTS
+                    speak(text);
+                }
+            } catch (error) {
+                console.error('Backend TTS error:', error);
+                // Fallback to browser TTS
+                speak(text);
+            }
+        }
+        
+        function updateConnectionStatus(status) {
+            // You can add a status indicator in the UI later
+            console.log('Connection status:', status);
+        }
+        
+        // =======================================================
+
         // ============ TEXT-TO-SPEECH AND LIP-SYNC FUNCTIONS ============
         // NOTE: This is TEMPORARY for testing - will be replaced with microphone input
         
@@ -506,11 +649,20 @@
             // Initialize Web Audio API for lip-sync
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
 
+            // Connect to backend
+            connectToBackend();
+
             // Speak button click
             speakBtn.addEventListener('click', () => {
                 const text = textInput.value.trim();
                 if (text) {
-                    speak(text);
+                    if (isConnectedToBackend) {
+                        // Send to backend for AI response
+                        sendMessageToBackend(text);
+                    } else {
+                        // Fallback to local TTS
+                        speak(text);
+                    }
                 }
             });
 
@@ -519,7 +671,11 @@
                 if (e.key === 'Enter') {
                     const text = textInput.value.trim();
                     if (text) {
-                        speak(text);
+                        if (isConnectedToBackend) {
+                            sendMessageToBackend(text);
+                        } else {
+                            speak(text);
+                        }
                     }
                 }
             });

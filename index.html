@@ -133,6 +133,12 @@
         #speak-btn.speaking {
             background: rgba(255, 100, 100, 0.8);
         }
+
+        #text-input:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            border-color: rgba(100, 100, 100, 0.3);
+        }
         /* ======================================================================== */
 
         /* Character Selector Menu */
@@ -333,7 +339,7 @@
     <!-- This is for testing TTS and lip-sync before implementing voice input -->
     <div id="text-input-container">
         <input type="text" id="text-input" placeholder="Type something for her to say..." />
-        <button id="speak-btn">Speak</button>
+        <button id="speak-btn">Send</button>
     </div>
     <!-- ======================================================================== -->
 
@@ -517,6 +523,8 @@
 
         // ============ BACKEND CONNECTION FUNCTIONS ============
         
+        let pendingResponseText = ''; // Store text for lip-sync
+        
         function connectToBackend() {
             console.log('Connecting to backend:', BACKEND_URL);
             
@@ -535,14 +543,18 @@
                 if (data.type === 'connected') {
                     console.log('Backend welcome:', data.message);
                 } else if (data.type === 'response') {
+                    // Store the text for lip-sync when audio arrives
+                    pendingResponseText = data.text;
+                    
                     // Got AI response - request TTS via WebSocket
                     ws.send(JSON.stringify({
                         type: 'tts',
                         text: data.text
                     }));
                 } else if (data.type === 'audio') {
-                    // Received audio data as base64
-                    await playAudioFromBase64(data.data, data.text || '');
+                    // Received audio data as base64 - use stored text for lip-sync
+                    await playAudioFromBase64(data.data, pendingResponseText);
+                    pendingResponseText = ''; // Clear after use
                 } else if (data.type === 'error') {
                     console.error('Backend error:', data.text);
                     // Fallback to browser TTS
@@ -586,8 +598,9 @@
             console.log('Speaking with backend TTS:', text);
             isSpeaking = true;
             const speakBtn = document.getElementById('speak-btn');
+            const textInput = document.getElementById('text-input');
             speakBtn.classList.add('speaking');
-            speakBtn.textContent = 'Stop';
+            speakBtn.textContent = 'Speaking...';
             
             try {
                 // Get audio from backend
@@ -612,7 +625,10 @@
                     audio.onended = () => {
                         isSpeaking = false;
                         speakBtn.classList.remove('speaking');
-                        speakBtn.textContent = 'Speak';
+                        speakBtn.textContent = 'Send';
+                        speakBtn.disabled = false;
+                        textInput.disabled = false;
+                        textInput.focus();
                         stopLipSync();
                         URL.revokeObjectURL(audioUrl);
                     };
@@ -622,7 +638,10 @@
                         stopLipSync();
                         isSpeaking = false;
                         speakBtn.classList.remove('speaking');
-                        speakBtn.textContent = 'Speak';
+                        speakBtn.textContent = 'Send';
+                        speakBtn.disabled = false;
+                        textInput.disabled = false;
+                        textInput.focus();
                     };
                     
                     await audio.play();
@@ -642,8 +661,9 @@
             console.log('Playing audio from WebSocket');
             isSpeaking = true;
             const speakBtn = document.getElementById('speak-btn');
+            const textInput = document.getElementById('text-input');
             speakBtn.classList.add('speaking');
-            speakBtn.textContent = 'Stop';
+            speakBtn.textContent = 'Speaking...';
             
             try {
                 // Convert base64 to blob
@@ -656,15 +676,17 @@
                 const audioUrl = URL.createObjectURL(audioBlob);
                 const audio = new Audio(audioUrl);
                 
-                // Start lip-sync when audio starts
-                audio.onplay = () => {
-                    startLipSync(text);
-                };
+                // START LIP-SYNC IMMEDIATELY - before audio plays
+                console.log('Starting lip-sync for:', text);
+                startLipSync(text);
                 
                 audio.onended = () => {
                     isSpeaking = false;
                     speakBtn.classList.remove('speaking');
-                    speakBtn.textContent = 'Speak';
+                    speakBtn.textContent = 'Send';
+                    speakBtn.disabled = false;
+                    textInput.disabled = false;
+                    textInput.focus(); // Return focus to input
                     stopLipSync();
                     URL.revokeObjectURL(audioUrl);
                 };
@@ -674,7 +696,10 @@
                     stopLipSync();
                     isSpeaking = false;
                     speakBtn.classList.remove('speaking');
-                    speakBtn.textContent = 'Speak';
+                    speakBtn.textContent = 'Send';
+                    speakBtn.disabled = false;
+                    textInput.disabled = false;
+                    textInput.focus();
                 };
                 
                 await audio.play();
@@ -682,8 +707,13 @@
                 console.error('Audio playback error:', error);
                 stopLipSync();
                 isSpeaking = false;
+                const speakBtn = document.getElementById('speak-btn');
+                const textInput = document.getElementById('text-input');
                 speakBtn.classList.remove('speaking');
-                speakBtn.textContent = 'Speak';
+                speakBtn.textContent = 'Send';
+                speakBtn.disabled = false;
+                textInput.disabled = false;
+                textInput.focus();
             }
         }
         
@@ -710,7 +740,12 @@
             // Speak button click
             speakBtn.addEventListener('click', () => {
                 const text = textInput.value.trim();
-                if (text) {
+                if (text && !isSpeaking) {
+                    // Clear input and disable controls
+                    textInput.value = '';
+                    textInput.disabled = true;
+                    speakBtn.disabled = true;
+                    
                     if (isConnectedToBackend) {
                         // Send to backend for AI response
                         sendMessageToBackend(text);
@@ -725,7 +760,12 @@
             textInput.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     const text = textInput.value.trim();
-                    if (text) {
+                    if (text && !isSpeaking) {
+                        // Clear input and disable controls
+                        textInput.value = '';
+                        textInput.disabled = true;
+                        speakBtn.disabled = true;
+                        
                         if (isConnectedToBackend) {
                             sendMessageToBackend(text);
                         } else {
@@ -747,8 +787,9 @@
             console.log('Speaking:', text);
             isSpeaking = true;
             const speakBtn = document.getElementById('speak-btn');
+            const textInput = document.getElementById('text-input');
             speakBtn.classList.add('speaking');
-            speakBtn.textContent = 'Stop';
+            speakBtn.textContent = 'Speaking...';
 
             // Create speech utterance
             currentUtterance = new SpeechSynthesisUtterance(text);
@@ -779,11 +820,19 @@
             currentUtterance.onend = () => {
                 console.log('Speech ended');
                 stopLipSync();
+                // Re-enable input
+                speakBtn.disabled = false;
+                textInput.disabled = false;
+                textInput.focus();
             };
 
             currentUtterance.onerror = (e) => {
                 console.error('Speech error:', e);
                 stopLipSync();
+                // Re-enable input
+                speakBtn.disabled = false;
+                textInput.disabled = false;
+                textInput.focus();
             };
 
             window.speechSynthesis.speak(currentUtterance);
@@ -826,7 +875,7 @@
             isSpeaking = false;
             const speakBtn = document.getElementById('speak-btn');
             speakBtn.classList.remove('speaking');
-            speakBtn.textContent = 'Speak';
+            speakBtn.textContent = 'Send';
             
             if (lipSyncInterval) {
                 clearInterval(lipSyncInterval);

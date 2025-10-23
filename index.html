@@ -535,8 +535,14 @@
                 if (data.type === 'connected') {
                     console.log('Backend welcome:', data.message);
                 } else if (data.type === 'response') {
-                    // Got AI response - speak it
-                    await speakWithBackend(data.text);
+                    // Got AI response - request TTS via WebSocket
+                    ws.send(JSON.stringify({
+                        type: 'tts',
+                        text: data.text
+                    }));
+                } else if (data.type === 'audio') {
+                    // Received audio data as base64
+                    await playAudioFromBase64(data.data, data.text || '');
                 } else if (data.type === 'error') {
                     console.error('Backend error:', data.text);
                     // Fallback to browser TTS
@@ -629,6 +635,55 @@
                 console.error('Backend TTS error:', error);
                 // Fallback to browser TTS
                 speak(text);
+            }
+        }
+        
+        async function playAudioFromBase64(base64Audio, text) {
+            console.log('Playing audio from WebSocket');
+            isSpeaking = true;
+            const speakBtn = document.getElementById('speak-btn');
+            speakBtn.classList.add('speaking');
+            speakBtn.textContent = 'Stop';
+            
+            try {
+                // Convert base64 to blob
+                const binaryString = atob(base64Audio);
+                const bytes = new Uint8Array(binaryString.length);
+                for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                const audioBlob = new Blob([bytes], { type: 'audio/wav' });
+                const audioUrl = URL.createObjectURL(audioBlob);
+                const audio = new Audio(audioUrl);
+                
+                // Start lip-sync when audio starts
+                audio.onplay = () => {
+                    startLipSync(text);
+                };
+                
+                audio.onended = () => {
+                    isSpeaking = false;
+                    speakBtn.classList.remove('speaking');
+                    speakBtn.textContent = 'Speak';
+                    stopLipSync();
+                    URL.revokeObjectURL(audioUrl);
+                };
+                
+                audio.onerror = (e) => {
+                    console.error('Audio playback error:', e);
+                    stopLipSync();
+                    isSpeaking = false;
+                    speakBtn.classList.remove('speaking');
+                    speakBtn.textContent = 'Speak';
+                };
+                
+                await audio.play();
+            } catch (error) {
+                console.error('Audio playback error:', error);
+                stopLipSync();
+                isSpeaking = false;
+                speakBtn.classList.remove('speaking');
+                speakBtn.textContent = 'Speak';
             }
         }
         

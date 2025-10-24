@@ -1,5 +1,5 @@
 // Service Worker for AI Assistant Pod PWA
-const CACHE_NAME = 'ai-assistant-pod-v34';
+const CACHE_NAME = 'ai-assistant-pod-v35';
 const urlsToCache = [
   './',
   './index.html',

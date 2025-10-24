@@ -6,8 +6,7 @@
     <meta name="theme-color" content="#1a1a2e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="manifest" href="manifest.json">
-    <title>AI Assistant Pod</title>
+    <title>AI Assistant Pod - Live2D</title>
     <style>
         * {
             margin: 0;
@@ -29,6 +28,12 @@
             height: 100%;
             position: relative;
             touch-action: none;
+        }
+
+        #live2d-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
         }
 
         #loading {
@@ -57,23 +62,23 @@
             100% { transform: rotate(360deg); }
         }
 
-        #controls {
+        #error {
             position: absolute;
-            bottom: 20px;
+            top: 50%;
             left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.7);
-            padding: 15px 25px;
-            border-radius: 25px;
-            color: white;
-            font-size: 14px;
-            backdrop-filter: blur(10px);
-            z-index: 5;
+            transform: translate(-50%, -50%);
+            color: #ff6b6b;
+            font-size: 18px;
+            text-align: center;
+            z-index: 10;
+            display: none;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 10px;
+            max-width: 80%;
         }
 
-        /* ========== TEMPORARY TEXT INPUT - REMOVE WHEN MICROPHONE ADDED ========== */
-        /* This is a placeholder for testing TTS and lip-sync */
-        /* Will be replaced with microphone button in future phase */
+        /* Text input for testing */
         #text-input-container {
             position: fixed;
             bottom: 20px;
@@ -102,10 +107,6 @@
             border-color: #00d4ff;
         }
 
-        #text-input::placeholder {
-            color: rgba(255, 255, 255, 0.5);
-        }
-
         #speak-btn {
             background: rgba(0, 212, 255, 0.8);
             border: none;
@@ -116,7 +117,6 @@
             font-weight: bold;
             cursor: pointer;
             transition: all 0.3s;
-            backdrop-filter: blur(10px);
         }
 
         #speak-btn:hover {
@@ -124,27 +124,45 @@
             transform: scale(1.05);
         }
 
-        #speak-btn:disabled {
-            background: rgba(100, 100, 100, 0.5);
-            cursor: not-allowed;
-            transform: scale(1);
-        }
-
         #speak-btn.speaking {
             background: rgba(255, 100, 100, 0.8);
         }
 
-        #text-input:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            border-color: rgba(100, 100, 100, 0.3);
+        /* Character selector - Desktop only */
+        #character-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 212, 255, 0.8);
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 101;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
         }
-        /* ======================================================================== */
 
-        /* Character Selector Menu */
+        #character-toggle:hover {
+            background: rgba(0, 212, 255, 1);
+            transform: scale(1.1);
+        }
+
+        /* Hide toggle button on mobile - use swipe instead */
+        @media (max-width: 768px) {
+            #character-toggle {
+                display: none;
+            }
+        }
+
         #character-menu {
             position: fixed;
-            right: -320px; /* Hidden off-screen */
+            right: -320px;
             top: 0;
             width: 300px;
             height: 100%;
@@ -158,7 +176,7 @@
         }
 
         #character-menu.open {
-            right: 0; /* Slide in */
+            right: 0;
         }
 
         #character-menu h2 {
@@ -176,9 +194,6 @@
             margin-bottom: 15px;
             cursor: pointer;
             transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            gap: 15px;
         }
 
         .character-item:hover {
@@ -192,1375 +207,536 @@
             border-color: #00d4ff;
         }
 
-        .character-thumb {
-            width: 60px;
-            height: 60px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 30px;
-        }
-
-        .character-info {
-            flex: 1;
-            min-width: 0; /* Allow text to shrink */
-        }
-
         .character-name {
             color: white;
             font-size: 16px;
             font-weight: bold;
             margin-bottom: 5px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
 
         .character-desc {
             color: rgba(255, 255, 255, 0.7);
             font-size: 12px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
 
-        /* Tutorial hint - shows on first load */
-        #tutorial-hint {
-            position: fixed;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: rgba(0, 212, 255, 0.9);
-            color: white;
-            padding: 30px 12px;
-            border-radius: 10px;
-            font-size: 14px;
-            z-index: 150;
-            animation: slideInRight 0.5s ease, fadeOut 0.5s ease 4.5s forwards;
-            pointer-events: none;
-            box-shadow: 0 4px 15px rgba(0, 212, 255, 0.4);
-            writing-mode: vertical-rl;
-            text-orientation: mixed;
-            letter-spacing: 2px;
-        }
-
-        @keyframes slideInRight {
-            from {
-                right: -100px;
-                opacity: 0;
-            }
-            to {
-                right: 10px;
-                opacity: 1;
-            }
-        }
-
-        @keyframes fadeOut {
-            to {
-                opacity: 0;
-                right: -100px;
-            }
-        }
-
-        /* Desktop-only menu button */
-        #desktop-menu-btn {
-            display: none; /* Hidden on mobile */
+        #status-info {
             position: fixed;
             top: 20px;
-            right: 20px;
-            background: transparent;
-            color: white;
-            border: 2px solid rgba(255, 255, 255, 0.5);
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
             padding: 10px 15px;
-            border-radius: 8px;
-            font-size: 24px;
-            cursor: pointer;
-            z-index: 50;
-            transition: all 0.3s;
-            backdrop-filter: blur(5px);
-            line-height: 1;
-        }
-
-        #desktop-menu-btn:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.8);
-            transform: scale(1.05);
-        }
-
-        #desktop-menu-btn::before {
-            content: '☰';
-        }
-
-        /* Show button only on desktop (>768px width) */
-        @media (min-width: 768px) {
-            #desktop-menu-btn {
-                display: block;
-            }
-            #tutorial-hint {
-                display: none; /* Don't show tutorial on desktop */
-            }
-        }
-
-        #error {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(255, 0, 0, 0.8);
-            color: white;
-            padding: 20px;
             border-radius: 10px;
-            display: none;
-            max-width: 80%;
-            text-align: center;
-            z-index: 20;
-        }
-
-        canvas {
-            display: block;
-            width: 100%;
-            height: 100%;
+            color: white;
+            font-size: 12px;
+            z-index: 10;
+            backdrop-filter: blur(10px);
         }
     </style>
 </head>
 <body>
-    <div id="canvas-container"></div>
-    
+    <div id="canvas-container">
+        <canvas id="live2d-canvas"></canvas>
+    </div>
+
     <div id="loading">
         <div class="spinner"></div>
-        <div>Loading VRM Model...</div>
+        <div>Loading Live2D model...</div>
     </div>
 
     <div id="error"></div>
 
-    <!-- ========== TEMPORARY TEXT INPUT - REMOVE WHEN MICROPHONE ADDED ========== -->
-    <!-- This is for testing TTS and lip-sync before implementing voice input -->
-    <div id="text-input-container">
-        <input type="text" id="text-input" placeholder="Type something for her to say..." />
-        <button id="speak-btn">Send</button>
-    </div>
-    <!-- ======================================================================== -->
-
-    <div id="controls" style="display: none;">
-        Idle Animation Active
+    <div id="status-info">
+        <div>🎭 Live2D System</div>
+        <div id="model-status">No model loaded</div>
     </div>
 
-    <!-- Tutorial hint - shows on first load (mobile only) -->
-    <div id="tutorial-hint">
-        Swipe
-    </div>
+    <!-- Character selector toggle button -->
+    <button id="character-toggle">👤</button>
 
-    <!-- Desktop menu button (desktop only) -->
-    <button id="desktop-menu-btn"></button>
-
-    <!-- Character Selector Menu -->
+    <!-- Character selection menu -->
     <div id="character-menu">
-        <h2>Characters</h2>
+        <h2>Select Character</h2>
         <div id="character-list">
-            <!-- Characters will be populated by JavaScript -->
+            <!-- Characters will be populated here -->
         </div>
     </div>
 
-    <!-- Three.js and VRM Libraries -->
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/",
-                "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@3.1.6/lib/three-vrm.module.js"
-            }
-        }
-    </script>
+    <!-- Temporary text input for testing -->
+    <div id="text-input-container">
+        <input type="text" id="text-input" placeholder="Type a message to test lip-sync...">
+        <button id="speak-btn">Send</button>
+    </div>
 
-    <script type="module">
-        import * as THREE from 'three';
-        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-        import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+    <!-- Load PIXI.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    
+    <!-- Load pixi-live2d-display -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
 
-        let scene, camera, renderer, controls, currentVrm;
-        const container = document.getElementById('canvas-container');
-        const loadingDiv = document.getElementById('loading');
-        const errorDiv = document.getElementById('error');
-
-        // ============ CHARACTER LIST - ADD YOUR CHARACTERS HERE ============
-        const characters = [
+    <script>
+        // Configuration
+        const BACKEND_URL = 'https://waifuassistant.duckdns.org';
+        
+        // Available Live2D characters
+        const CHARACTERS = [
             {
-                id: 'default',
-                name: 'Sample Character',
-                description: 'Default VRM model',
-                emoji: '👾',
-                url: 'https://pixiv.github.io/three-vrm/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm'
+                id: 'hiyori',
+                name: 'Hiyori (Example)',
+                description: 'Sample Live2D character',
+                modelUrl: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/hiyori/hiyori.model.json',
+                scale: 0.1,
+                position: { x: 0, y: 0.1 }
             },
-            // Add more characters here - name/description will be auto-loaded from VRM metadata:
-            // {
-            //     id: 'character2',
-            //     name: 'Loading...',  // Will be replaced with VRM metadata
-            //     description: 'Custom character',
-            //     emoji: '🎀',
-            //     url: './models/your-character.vrm'
-            // },
+            {
+                id: 'shizuku',
+                name: 'Shizuku (Example)',
+                description: 'Another sample character',
+                modelUrl: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/shizuku/shizuku.model.json',
+                scale: 0.08,
+                position: { x: 0, y: 0.15 }
+            }
         ];
-        let currentCharacterId = 'default';
-        let characterMetadataLoaded = false;
-        // ====================================================================
 
-        // Menu state
-        let menuOpen = false;
-        let touchStartX = 0;
-        let touchStartY = 0;
+        // Global state
+        let app;
+        let currentModel = null;
+        let currentCharacter = null;
+        let ws = null;
+        let isConnected = false;
 
-        // Animation variables
-        let clock = new THREE.Clock();
-        let idleAnimation = {
-            // === ANIMATION SETTINGS - EDIT THESE TO CUSTOMIZE ===
-            breathingSpeed: 2.0,      // How fast breathing cycles (higher = faster)
-            breathingAmount: 0.01,    // How much chest moves (higher = more movement)
-            blinkTimer: 0,
-            blinkInterval: 3.0,       // Seconds between blinks (higher = less frequent)
-            isBlinking: false,
-            blinkDuration: 0.15       // How long blink takes (higher = slower blink)
-            // ===================================================
+        // Lip sync state
+        let lipSyncState = {
+            isSpeaking: false,
+            targetMouthOpen: 0,
+            currentMouthOpen: 0,
+            smoothingFactor: 0.3,
+            speakingStartTime: 0,
+            speakingDuration: 0
         };
 
-        // Cursor/Look-at tracking
-        let mousePosition = { x: 0, y: 0 };
-        let targetLookAt = { x: 0, y: 0 };
-        let currentLookAt = { x: 0, y: 0 };
-        const lookAtSpeed = 0.05; // How fast head follows cursor (lower = smoother)
-        let lookAtTarget = null; // THREE.Object3D for VRM lookAt system
+        // Mouse tracking
+        let mouseX = 0;
+        let mouseY = 0;
 
-        // ========== TEXT-TO-SPEECH AND LIP-SYNC ==========
-        // NOTE: This will be replaced with microphone input later
-        // TODO: When moving from GitHub Pages to homelab hosting:
-        //   1. Replace browser TTS with Coqui TTS or Piper on homelab server
-        //   2. Set up Python FastAPI backend on homelab
-        //   3. Stream audio from server via WebSocket
-        //   4. Benefits: Natural voices, consistent across devices, customizable
-        //   5. Recommended: Coqui TTS (tts_models/en/vctk/vits) or Piper for speed
-        // TODO: Add voice selector in settings menu:
-        //   - Dropdown with cute/soft voice options (see VOICE_OPTIONS.md)
-        //   - Voices: en_US-lessac-medium, en_US-amy-medium, en_GB-jenny_dioco-medium
-        //   - Test button to preview each voice
-        //   - Save selection to localStorage
-        //   - Pass selected voice to backend TTS endpoint
-        
-        // Backend connection settings
-        const BACKEND_URL = 'wss://waifubackend.pokymedia.xyz/ws'; // WebSocket
-        const BACKEND_API = 'https://waifubackend.pokymedia.xyz'; // HTTP API
-        let ws = null;
-        let isConnectedToBackend = false;
-        
-        let isSpeaking = false;
-        let audioContext = null;
-        let audioAnalyser = null;
-        let audioDataArray = null;
-        let audioSource = null;
-        let currentUtterance = null;
-        let lipSyncInterval = null;
-        // =================================================
-
-        function init() {
-            // Scene setup
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x1a1a2e);
-
-            // ============ CAMERA SETUP - EDIT FOR DIFFERENT VIEW ============
-            // Camera setup - adjusted for portrait mobile view
-            camera = new THREE.PerspectiveCamera(
-                35,  // Field of view (higher = wider view, lower = zoomed in)
-                window.innerWidth / window.innerHeight,
-                0.1,
-                100
-            );
-            camera.position.set(0, 1.3, 2.5);  // (x, y, z) - adjust to frame character
-            // x: left/right (0 = centered)
-            // y: up/down (1.3 = eye level)
-            // z: distance from character (2.5 = close portrait, try 3-4 for full body)
-            // ================================================================
-
-            // Renderer setup
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // Optimize for mobile
-            renderer.outputColorSpace = THREE.SRGBColorSpace;
-            container.appendChild(renderer.domElement);
-
-            // Lighting
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
-            directionalLight.position.set(1, 1, 1);
-            scene.add(directionalLight);
-
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-            scene.add(ambientLight);
-
-            // Controls disabled - character will animate on its own
-            // controls = new OrbitControls(camera, renderer.domElement);
-            // controls.enableDamping = true;
-            // controls.dampingFactor = 0.05;
-            // controls.target.set(0, 1.2, 0);
-            // controls.minDistance = 1;
-            // controls.maxDistance = 5;
-            // controls.enablePan = false;
-            // controls.update();
+        // Initialize PIXI Application
+        function initPixi() {
+            const canvas = document.getElementById('live2d-canvas');
+            
+            app = new PIXI.Application({
+                view: canvas,
+                width: window.innerWidth,
+                height: window.innerHeight,
+                backgroundColor: 0x1a1a2e,
+                backgroundAlpha: 0,
+                antialias: true,
+                resolution: window.devicePixelRatio || 1,
+                autoDensity: true
+            });
 
             // Handle window resize
-            window.addEventListener('resize', onWindowResize);
-
-            // Initialize character menu
-            initCharacterMenu();
-            setupSwipeDetection();
-            setupCursorTracking();
-            setupTextToSpeech(); // TEMPORARY - for testing lip-sync
-
-            // Load VRM model
-            loadVRM();
-
-            // Start animation loop
-            animate();
-        }
-
-        // ============ BACKEND CONNECTION FUNCTIONS ============
-        
-        let pendingResponseText = ''; // Store text for lip-sync
-        
-        function connectToBackend() {
-            console.log('Connecting to backend:', BACKEND_URL);
-            
-            ws = new WebSocket(BACKEND_URL);
-            
-            ws.onopen = () => {
-                console.log('Connected to backend!');
-                isConnectedToBackend = true;
-                updateConnectionStatus('Connected');
-            };
-            
-            ws.onmessage = async (event) => {
-                const data = JSON.parse(event.data);
-                console.log('Received from backend:', data);
-                
-                if (data.type === 'connected') {
-                    console.log('Backend welcome:', data.message);
-                } else if (data.type === 'response') {
-                    // Store the text for lip-sync when audio arrives
-                    pendingResponseText = data.text;
-                    
-                    // Got AI response - request TTS via WebSocket
-                    ws.send(JSON.stringify({
-                        type: 'tts',
-                        text: data.text
-                    }));
-                } else if (data.type === 'audio') {
-                    // Received audio data as base64 - use stored text for lip-sync
-                    await playAudioFromBase64(data.data, pendingResponseText);
-                    pendingResponseText = ''; // Clear after use
-                } else if (data.type === 'error') {
-                    console.error('Backend error:', data.text);
-                    // Fallback to browser TTS
-                    speak(data.text);
+            window.addEventListener('resize', () => {
+                app.renderer.resize(window.innerWidth, window.innerHeight);
+                if (currentModel) {
+                    positionModel(currentModel, currentCharacter);
                 }
-            };
-            
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-                isConnectedToBackend = false;
-                updateConnectionStatus('Error');
-            };
-            
-            ws.onclose = () => {
-                console.log('Disconnected from backend');
-                isConnectedToBackend = false;
-                updateConnectionStatus('Disconnected');
-                
-                // Try to reconnect after 5 seconds
-                setTimeout(() => {
-                    console.log('Attempting to reconnect...');
-                    connectToBackend();
-                }, 5000);
-            };
+            });
+
+            // Mouse tracking for gaze
+            window.addEventListener('mousemove', (event) => {
+                mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+                mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+            });
+
+            // Touch tracking for mobile
+            window.addEventListener('touchmove', (event) => {
+                if (event.touches.length > 0) {
+                    const touch = event.touches[0];
+                    mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
+                    mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
+                }
+            });
+
+            console.log('PIXI initialized');
         }
-        
-        function sendMessageToBackend(text) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'message',
-                    text: text
-                }));
-                return true;
-            } else {
-                console.error('WebSocket not connected');
-                return false;
-            }
-        }
-        
-        async function speakWithBackend(text) {
-            console.log('Speaking with backend TTS:', text);
-            isSpeaking = true;
-            const speakBtn = document.getElementById('speak-btn');
-            const textInput = document.getElementById('text-input');
-            speakBtn.classList.add('speaking');
-            speakBtn.textContent = 'Speaking...';
-            
+
+        // Load Live2D model
+        async function loadLive2DModel(character) {
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const statusDiv = document.getElementById('model-status');
+
+            loadingDiv.style.display = 'block';
+            errorDiv.style.display = 'none';
+
             try {
-                // Get audio from backend
-                const response = await fetch(`${BACKEND_API}/api/tts`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ text: text })
+                console.log(`Loading Live2D model: ${character.name}`);
+                
+                // Remove previous model if exists
+                if (currentModel) {
+                    app.stage.removeChild(currentModel);
+                    currentModel.destroy();
+                }
+
+                // Load the Live2D model
+                const model = await PIXI.live2d.Live2DModel.from(character.modelUrl, {
+                    autoInteract: false // We'll handle interactions manually
                 });
-                
-                if (response.ok) {
-                    const audioBlob = await response.blob();
-                    const audioUrl = URL.createObjectURL(audioBlob);
-                    const audio = new Audio(audioUrl);
-                    
-                    // Start lip-sync when audio starts
-                    audio.onplay = () => {
-                        startLipSync(text);
-                    };
-                    
-                    audio.onended = () => {
-                        isSpeaking = false;
-                        speakBtn.classList.remove('speaking');
-                        speakBtn.textContent = 'Send';
-                        speakBtn.disabled = false;
-                        textInput.disabled = false;
-                        textInput.focus();
-                        stopLipSync();
-                        URL.revokeObjectURL(audioUrl);
-                    };
-                    
-                    audio.onerror = (e) => {
-                        console.error('Audio playback error:', e);
-                        stopLipSync();
-                        isSpeaking = false;
-                        speakBtn.classList.remove('speaking');
-                        speakBtn.textContent = 'Send';
-                        speakBtn.disabled = false;
-                        textInput.disabled = false;
-                        textInput.focus();
-                    };
-                    
-                    await audio.play();
-                } else {
-                    console.error('TTS request failed:', response.status);
-                    // Fallback to browser TTS
-                    speak(text);
-                }
+
+                currentModel = model;
+                currentCharacter = character;
+
+                // Position and scale the model
+                positionModel(model, character);
+
+                // Add to stage
+                app.stage.addChild(model);
+
+                // Setup model parameters
+                setupModelBehaviors(model);
+
+                // Update status
+                statusDiv.textContent = `Model: ${character.name}`;
+                loadingDiv.style.display = 'none';
+
+                console.log('Live2D model loaded successfully!');
+                console.log('Available motions:', model.internalModel.motionManager.definitions);
+                console.log('Available expressions:', Object.keys(model.internalModel.motionManager.expressionManager?.definitions || {}));
+
             } catch (error) {
-                console.error('Backend TTS error:', error);
-                // Fallback to browser TTS
-                speak(text);
+                console.error('Error loading Live2D model:', error);
+                loadingDiv.style.display = 'none';
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = `Failed to load model: ${error.message}`;
             }
         }
-        
-        async function playAudioFromBase64(base64Audio, text) {
-            console.log('Playing audio from WebSocket');
-            isSpeaking = true;
-            const speakBtn = document.getElementById('speak-btn');
-            const textInput = document.getElementById('text-input');
-            speakBtn.classList.add('speaking');
-            speakBtn.textContent = 'Speaking...';
-            
-            try {
-                // Convert base64 to blob
-                const binaryString = atob(base64Audio);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                const audioBlob = new Blob([bytes], { type: 'audio/wav' });
-                const audioUrl = URL.createObjectURL(audioBlob);
-                const audio = new Audio(audioUrl);
-                
-                // START LIP-SYNC IMMEDIATELY - before audio plays
-                console.log('Starting lip-sync for:', text);
-                startLipSync(text);
-                
-                audio.onended = () => {
-                    isSpeaking = false;
-                    speakBtn.classList.remove('speaking');
-                    speakBtn.textContent = 'Send';
-                    speakBtn.disabled = false;
-                    textInput.disabled = false;
-                    textInput.focus(); // Return focus to input
-                    stopLipSync();
-                    URL.revokeObjectURL(audioUrl);
-                };
-                
-                audio.onerror = (e) => {
-                    console.error('Audio playback error:', e);
-                    stopLipSync();
-                    isSpeaking = false;
-                    speakBtn.classList.remove('speaking');
-                    speakBtn.textContent = 'Send';
-                    speakBtn.disabled = false;
-                    textInput.disabled = false;
-                    textInput.focus();
-                };
-                
-                await audio.play();
-            } catch (error) {
-                console.error('Audio playback error:', error);
-                stopLipSync();
-                isSpeaking = false;
-                const speakBtn = document.getElementById('speak-btn');
-                const textInput = document.getElementById('text-input');
-                speakBtn.classList.remove('speaking');
-                speakBtn.textContent = 'Send';
-                speakBtn.disabled = false;
-                textInput.disabled = false;
-                textInput.focus();
-            }
-        }
-        
-        function updateConnectionStatus(status) {
-            // You can add a status indicator in the UI later
-            console.log('Connection status:', status);
-        }
-        
-        // =======================================================
 
-        // ============ TEXT-TO-SPEECH AND LIP-SYNC FUNCTIONS ============
-        // NOTE: This is TEMPORARY for testing - will be replaced with microphone input
-        
-        function setupTextToSpeech() {
-            const textInput = document.getElementById('text-input');
-            const speakBtn = document.getElementById('speak-btn');
-
-            // Initialize Web Audio API for lip-sync
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-            // Connect to backend
-            connectToBackend();
-
-            // Speak button click
-            speakBtn.addEventListener('click', () => {
-                const text = textInput.value.trim();
-                if (text && !isSpeaking) {
-                    // Clear input and disable controls
-                    textInput.value = '';
-                    textInput.disabled = true;
-                    speakBtn.disabled = true;
-                    
-                    if (isConnectedToBackend) {
-                        // Send to backend for AI response
-                        sendMessageToBackend(text);
-                    } else {
-                        // Fallback to local TTS
-                        speak(text);
-                    }
-                }
-            });
-
-            // Enter key to speak
-            textInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    const text = textInput.value.trim();
-                    if (text && !isSpeaking) {
-                        // Clear input and disable controls
-                        textInput.value = '';
-                        textInput.disabled = true;
-                        speakBtn.disabled = true;
-                        
-                        if (isConnectedToBackend) {
-                            sendMessageToBackend(text);
-                        } else {
-                            speak(text);
-                        }
-                    }
-                }
-            });
-        }
-
-        function speak(text) {
-            if (isSpeaking) {
-                console.log('Already speaking, cancelling...');
-                window.speechSynthesis.cancel();
-                stopLipSync();
-                return;
-            }
-
-            console.log('Speaking:', text);
-            isSpeaking = true;
-            const speakBtn = document.getElementById('speak-btn');
-            const textInput = document.getElementById('text-input');
-            speakBtn.classList.add('speaking');
-            speakBtn.textContent = 'Speaking...';
-
-            // Create speech utterance
-            currentUtterance = new SpeechSynthesisUtterance(text);
-            
-            // Configure voice (try to use a female voice)
-            const voices = window.speechSynthesis.getVoices();
-            const femaleVoice = voices.find(voice => 
-                voice.name.includes('female') || 
-                voice.name.includes('Female') ||
-                voice.name.includes('Samantha') ||
-                voice.name.includes('Victoria') ||
-                voice.name.includes('Google UK English Female') ||
-                voice.name.includes('Google US English Female')
+        function positionModel(model, character) {
+            // Center the model
+            model.anchor.set(0.5, 0.5);
+            model.position.set(
+                window.innerWidth * (0.5 + character.position.x),
+                window.innerHeight * (0.5 + character.position.y)
             );
-            if (femaleVoice) {
-                currentUtterance.voice = femaleVoice;
-            }
             
-            currentUtterance.rate = 1.0;
-            currentUtterance.pitch = 1.2;
-
-            // Start lip-sync animation
-            currentUtterance.onstart = () => {
-                console.log('Speech started');
-                startLipSync(text);
-            };
-
-            currentUtterance.onend = () => {
-                console.log('Speech ended');
-                stopLipSync();
-                // Re-enable input
-                speakBtn.disabled = false;
-                textInput.disabled = false;
-                textInput.focus();
-            };
-
-            currentUtterance.onerror = (e) => {
-                console.error('Speech error:', e);
-                stopLipSync();
-                // Re-enable input
-                speakBtn.disabled = false;
-                textInput.disabled = false;
-                textInput.focus();
-            };
-
-            window.speechSynthesis.speak(currentUtterance);
+            // Scale to fit screen nicely
+            const scaleX = (window.innerWidth / model.width) * character.scale;
+            const scaleY = (window.innerHeight / model.height) * character.scale;
+            const finalScale = Math.min(scaleX, scaleY);
+            model.scale.set(finalScale);
         }
 
-        function startLipSync(text) {
-            console.log('Starting sophisticated lip-sync for:', text);
-            
-            // Analyze text for phonemes and create timing
-            const phonemeTimings = analyzeTextForPhonemes(text);
-            let phonemeIndex = 0;
-            const startTime = Date.now();
-
-            // Update mouth shapes based on phoneme timing
-            lipSyncInterval = setInterval(() => {
-                if (!isSpeaking) {
-                    clearInterval(lipSyncInterval);
-                    return;
-                }
-
-                const elapsed = Date.now() - startTime;
-                
-                // Find current phoneme
-                while (phonemeIndex < phonemeTimings.length && 
-                       phonemeTimings[phonemeIndex].time < elapsed) {
-                    phonemeIndex++;
-                }
-
-                if (phonemeIndex < phonemeTimings.length) {
-                    const phoneme = phonemeTimings[phonemeIndex];
-                    setMouthShape(phoneme.shape, phoneme.amount);
-                } else {
-                    // End of speech
-                    setMouthShape('closed', 0);
-                }
-            }, 16); // ~60fps
-        }
-
-        function stopLipSync() {
-            isSpeaking = false;
-            const speakBtn = document.getElementById('speak-btn');
-            speakBtn.classList.remove('speaking');
-            speakBtn.textContent = 'Send';
-            
-            if (lipSyncInterval) {
-                clearInterval(lipSyncInterval);
-                lipSyncInterval = null;
-            }
-            
-            // Close mouth
-            setMouthShape('closed', 0);
-        }
-
-        function analyzeTextForPhonemes(text) {
-            // Analyze text and create phoneme timing estimates
-            const words = text.toLowerCase().split(/\s+/);
-            const phonemes = [];
-            let time = 0;
-            const msPerChar = 80; // Approximate timing
-
-            words.forEach((word, wordIndex) => {
-                for (let i = 0; i < word.length; i++) {
-                    const char = word[i];
-                    const nextChar = word[i + 1] || '';
-                    
-                    // Map characters to mouth shapes
-                    let shape = 'closed';
-                    let amount = 0.5;
-
-                    // Vowels - open mouth shapes
-                    if ('aā'.includes(char)) {
-                        shape = 'aa'; // Wide open
-                        amount = 0.8;
-                    } else if ('eē'.includes(char)) {
-                        shape = 'ee'; // Smile
-                        amount = 0.6;
-                    } else if ('iī'.includes(char)) {
-                        shape = 'ih'; // Small open
-                        amount = 0.5;
-                    } else if ('oōuū'.includes(char)) {
-                        shape = 'ou'; // Round
-                        amount = 0.7;
-                    }
-                    // Consonants
-                    else if ('bpm'.includes(char)) {
-                        shape = 'closed'; // Lips together
-                        amount = 0.1;
-                    } else if ('fv'.includes(char)) {
-                        shape = 'ff'; // Lip bite
-                        amount = 0.4;
-                    } else if ('td'.includes(char)) {
-                        shape = 'dd'; // Teeth
-                        amount = 0.3;
-                    } else if ('szcx'.includes(char)) {
-                        shape = 'ss'; // Hiss
-                        amount = 0.3;
-                    } else if ('lnr'.includes(char)) {
-                        shape = 'aa'; // Slight open
-                        amount = 0.4;
-                    }
-
-                    phonemes.push({
-                        char: char,
-                        shape: shape,
-                        amount: amount,
-                        time: time
-                    });
-
-                    time += msPerChar;
-                }
-
-                // Add pause between words
-                phonemes.push({
-                    char: ' ',
-                    shape: 'closed',
-                    amount: 0,
-                    time: time
-                });
-                time += msPerChar * 0.5;
+        function setupModelBehaviors(model) {
+            // Enable automatic behaviors
+            model.on('hit', (hitAreas) => {
+                console.log('Hit areas:', hitAreas);
+                // You could trigger reactions here
             });
 
-            return phonemes;
+            // Animation loop for custom behaviors
+            app.ticker.add(() => {
+                if (!model) return;
+
+                // Update eye tracking (gaze follows cursor)
+                updateEyeTracking(model);
+
+                // Update lip sync
+                updateLipSync(model);
+
+                // Update breathing (Live2D models have this built-in, but we can enhance)
+                updateBreathing(model);
+            });
         }
 
-        function setMouthShape(shape, amount) {
-            if (!currentVrm || !currentVrm.expressionManager) return;
-
+        function updateEyeTracking(model) {
             try {
-                // Reset all mouth shapes
-                const allShapes = ['aa', 'ih', 'ou', 'ee', 'oh', 'a', 'i', 'u', 'e', 'o'];
-                allShapes.forEach(s => {
-                    try {
-                        currentVrm.expressionManager.setValue(s, 0);
-                    } catch (e) {}
-                });
+                const coreModel = model.internalModel.coreModel;
+                
+                // Common Live2D eye parameters
+                const eyeParams = [
+                    'ParamAngleX',
+                    'ParamAngleY',
+                    'ParamEyeBallX',
+                    'ParamEyeBallY'
+                ];
 
-                // Set target shape
-                if (shape !== 'closed') {
-                    const shapeVariants = [shape, shape.toUpperCase()];
-                    for (const variant of shapeVariants) {
-                        try {
-                            currentVrm.expressionManager.setValue(variant, amount);
-                            break;
-                        } catch (e) {}
+                // Smooth eye movement
+                const eyeX = mouseX * 30; // Scale to appropriate range
+                const eyeY = mouseY * 30;
+
+                for (const param of eyeParams) {
+                    const index = coreModel.getParameterIndex(param);
+                    if (index >= 0) {
+                        const current = coreModel.getParameterValueById(index);
+                        let target = 0;
+                        
+                        if (param.includes('X')) target = eyeX;
+                        if (param.includes('Y')) target = eyeY;
+                        
+                        // Smooth interpolation
+                        const smoothed = current + (target - current) * 0.1;
+                        coreModel.setParameterValueById(index, smoothed);
                     }
                 }
             } catch (error) {
-                // Expressions not available
+                // Parameters might not exist, that's okay
             }
         }
 
-        function updateLipSync() {
-            // Lip-sync is now handled by interval in startLipSync
-            // This function kept for compatibility but not used
-        }
-
-        // Load voices when they're ready
-        if (typeof speechSynthesis !== 'undefined') {
-            speechSynthesis.onvoiceschanged = () => {
-                console.log('Voices loaded:', speechSynthesis.getVoices().length);
-            };
-        }
-        // ================================================================
-
-        // ============ CURSOR TRACKING FUNCTIONS ============
-        function setupCursorTracking() {
-            // Mouse movement
-            document.addEventListener('mousemove', (e) => {
-                // Convert mouse position to normalized coordinates (-1 to 1)
-                mousePosition.x = (e.clientX / window.innerWidth) * 2 - 1;
-                mousePosition.y = -(e.clientY / window.innerHeight) * 2 + 1;
-                
-                // Set target look position
-                targetLookAt.x = mousePosition.x * 0.5; // Reduce range for natural movement
-                targetLookAt.y = mousePosition.y * 0.3;
-            });
-
-            // Touch movement (mobile)
-            document.addEventListener('touchmove', (e) => {
-                if (e.touches[0]) {
-                    mousePosition.x = (e.touches[0].clientX / window.innerWidth) * 2 - 1;
-                    mousePosition.y = -(e.touches[0].clientY / window.innerHeight) * 2 + 1;
-                    
-                    targetLookAt.x = mousePosition.x * 0.5;
-                    targetLookAt.y = mousePosition.y * 0.3;
-                }
-            }, { passive: true });
-        }
-
-        function updateCursorTracking() {
-            if (!currentVrm || !currentVrm.humanoid) return;
-
+        function updateLipSync(model) {
             try {
-                // Smooth interpolation to target
-                currentLookAt.x += (targetLookAt.x - currentLookAt.x) * lookAtSpeed;
-                currentLookAt.y += (targetLookAt.y - currentLookAt.y) * lookAtSpeed;
-
-                // Get head and neck bones
-                const head = currentVrm.humanoid.getNormalizedBoneNode('head');
-                const neck = currentVrm.humanoid.getNormalizedBoneNode('neck');
+                const coreModel = model.internalModel.coreModel;
                 
-                // Rotate head to look at cursor
-                if (head) {
-                    head.rotation.y = currentLookAt.x * 0.7; // Left/right
-                    head.rotation.x = -currentLookAt.y * 0.5; // Up/down (inverted)
-                }
-                
-                // Subtle neck movement
-                if (neck) {
-                    neck.rotation.y = currentLookAt.x * 0.3;
-                    neck.rotation.x = -currentLookAt.y * 0.2; // Up/down (inverted)
+                // Animate mouth open/close during speaking
+                if (lipSyncState.isSpeaking) {
+                    const elapsed = Date.now() - lipSyncState.speakingStartTime;
+                    const progress = Math.min(elapsed / lipSyncState.speakingDuration, 1);
+                    
+                    // Oscillate mouth during speaking
+                    const oscillation = Math.sin(elapsed * 0.02) * 0.5 + 0.5; // 0 to 1
+                    lipSyncState.targetMouthOpen = oscillation * 0.8;
+                    
+                    if (progress >= 1) {
+                        lipSyncState.isSpeaking = false;
+                        lipSyncState.targetMouthOpen = 0;
+                    }
                 }
 
-                // Manual eye control (works for both VRM 0.x and 1.0)
-                const leftEye = currentVrm.humanoid.getNormalizedBoneNode('leftEye');
-                const rightEye = currentVrm.humanoid.getNormalizedBoneNode('rightEye');
-                
-                if (leftEye) {
-                    leftEye.rotation.y = currentLookAt.x * 0.4;
-                    leftEye.rotation.x = -currentLookAt.y * 0.3;
-                }
-                if (rightEye) {
-                    rightEye.rotation.y = currentLookAt.x * 0.4;
-                    rightEye.rotation.x = -currentLookAt.y * 0.3;
+                // Smooth mouth movement
+                lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * lipSyncState.smoothingFactor;
+
+                // Apply to model
+                const mouthParams = ['ParamMouthOpenY', 'PARAM_MOUTH_OPEN_Y'];
+                for (const param of mouthParams) {
+                    const index = coreModel.getParameterIndex(param);
+                    if (index >= 0) {
+                        coreModel.setParameterValueById(index, lipSyncState.currentMouthOpen);
+                    }
                 }
             } catch (error) {
-                console.error('Error in cursor tracking:', error);
+                // Parameters might not exist
             }
         }
-        // ==================================================
 
-        // ============ CHARACTER MENU FUNCTIONS ============
-        async function loadCharacterMetadata() {
-            console.log('Loading character metadata from VRM files...');
-            
-            for (let i = 0; i < characters.length; i++) {
-                const char = characters[i];
+        function updateBreathing(model) {
+            try {
+                const coreModel = model.internalModel.coreModel;
+                const time = Date.now() * 0.001;
                 
-                try {
-                    const response = await fetch(char.url);
-                    if (!response.ok) continue;
-                    
-                    const blob = await response.blob();
-                    const blobUrl = URL.createObjectURL(blob);
-                    
-                    const loader = new GLTFLoader();
-                    loader.register((parser) => new VRMLoaderPlugin(parser));
-                    
-                    loader.load(
-                        blobUrl,
-                        (gltf) => {
-                            const vrm = gltf.userData.vrm;
-                            if (vrm && vrm.meta) {
-                                // Update character info with VRM metadata
-                                if (vrm.meta.name && vrm.meta.name !== '') {
-                                    characters[i].name = vrm.meta.name;
-                                }
-                                if (vrm.meta.version && vrm.meta.version !== '') {
-                                    characters[i].description = `Version: ${vrm.meta.version}`;
-                                }
-                                if (vrm.meta.author && vrm.meta.author !== '') {
-                                    characters[i].description = `By ${vrm.meta.author}`;
-                                }
-                                
-                                console.log(`Loaded metadata for ${char.id}:`, vrm.meta);
-                                
-                                // Refresh UI if already initialized
-                                if (characterMetadataLoaded) {
-                                    updateCharacterUI(i);
-                                }
-                            }
-                            URL.revokeObjectURL(blobUrl);
-                        },
-                        undefined,
-                        (error) => {
-                            console.log(`Could not load metadata for ${char.id}:`, error);
-                            URL.revokeObjectURL(blobUrl);
-                        }
-                    );
-                } catch (error) {
-                    console.log(`Error fetching ${char.id}:`, error);
+                // Gentle breathing motion (Live2D usually has this built-in, but we can enhance)
+                const breathValue = Math.sin(time * 2) * 0.5 + 0.5; // 0 to 1
+                
+                const breathParams = ['ParamBreath', 'PARAM_BREATH'];
+                for (const param of breathParams) {
+                    const index = coreModel.getParameterIndex(param);
+                    if (index >= 0) {
+                        coreModel.setParameterValueById(index, breathValue);
+                    }
                 }
-            }
-            
-            characterMetadataLoaded = true;
-        }
-
-        function updateCharacterUI(index) {
-            const characterList = document.getElementById('character-list');
-            const items = characterList.querySelectorAll('.character-item');
-            
-            if (items[index]) {
-                const char = characters[index];
-                items[index].querySelector('.character-name').textContent = char.name;
-                items[index].querySelector('.character-desc').textContent = char.description;
+            } catch (error) {
+                // Parameters might not exist
             }
         }
 
-        function initCharacterMenu() {
+        function startLipSync(durationMs) {
+            lipSyncState.isSpeaking = true;
+            lipSyncState.speakingStartTime = Date.now();
+            lipSyncState.speakingDuration = durationMs;
+            console.log(`Started lip sync for ${durationMs}ms`);
+        }
+
+        // Character selection UI
+        function initCharacterSelector() {
             const characterList = document.getElementById('character-list');
-            const menu = document.getElementById('character-menu');
-            const desktopBtn = document.getElementById('desktop-menu-btn');
-            const tutorialHint = document.getElementById('tutorial-hint');
-
-            // Desktop button click handler
-            if (desktopBtn) {
-                console.log('Desktop button found, adding click listener');
-                desktopBtn.addEventListener('click', (e) => {
-                    e.stopPropagation(); // Prevent other handlers
-                    console.log('Desktop button clicked!');
-                    toggleMenu();
-                });
-            } else {
-                console.log('Desktop button NOT found');
-            }
-
-            // Auto-remove tutorial hint after 5 seconds
-            if (tutorialHint) {
-                setTimeout(() => {
-                    tutorialHint.remove();
-                }, 5000);
-            }
+            const characterMenu = document.getElementById('character-menu');
+            const toggleBtn = document.getElementById('character-toggle');
 
             // Populate character list
-            characters.forEach(char => {
+            CHARACTERS.forEach((char, index) => {
                 const item = document.createElement('div');
                 item.className = 'character-item';
-                if (char.id === currentCharacterId) {
-                    item.classList.add('active');
-                }
+                if (index === 0) item.classList.add('active');
                 
                 item.innerHTML = `
-                    <div class="character-thumb">${char.emoji}</div>
-                    <div class="character-info">
-                        <div class="character-name">${char.name}</div>
-                        <div class="character-desc">${char.description}</div>
-                    </div>
+                    <div class="character-name">${char.name}</div>
+                    <div class="character-desc">${char.description}</div>
                 `;
                 
                 item.addEventListener('click', () => {
-                    selectCharacter(char.id);
+                    // Update active state
+                    document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
+                    item.classList.add('active');
+                    
+                    // Load character
+                    loadLive2DModel(char);
+                    
+                    // Close menu
+                    characterMenu.classList.remove('open');
                 });
                 
                 characterList.appendChild(item);
             });
 
-            // Click outside menu to close
-            document.addEventListener('click', (e) => {
-                const clickedBtn = e.target.id === 'desktop-menu-btn' || e.target.closest('#desktop-menu-btn');
-                if (menuOpen && !menu.contains(e.target) && !clickedBtn) {
-                    toggleMenu();
-                }
+            // Desktop: Toggle menu with button
+            toggleBtn.addEventListener('click', () => {
+                characterMenu.classList.toggle('open');
             });
 
-            // Load VRM metadata in background
-            loadCharacterMetadata();
-        }
+            // Mobile: Swipe from right edge to open menu
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let isSwiping = false;
 
-        function setupSwipeDetection() {
-            const menu = document.getElementById('character-menu');
-            const swipeHint = document.getElementById('swipe-hint');
-            
-            // Touch events for swipe
             document.addEventListener('touchstart', (e) => {
                 touchStartX = e.touches[0].clientX;
                 touchStartY = e.touches[0].clientY;
-            }, { passive: true });
+                
+                // Detect if touch started from right edge (last 50px)
+                if (touchStartX > window.innerWidth - 50) {
+                    isSwiping = true;
+                }
+            });
 
             document.addEventListener('touchmove', (e) => {
-                // Only prevent default scrolling when swiping from edge, not everywhere
-                if (touchStartX > window.innerWidth - 80 && !menuOpen) {
-                    e.preventDefault();
-                }
-            }, { passive: false });
-
-            document.addEventListener('touchend', (e) => {
-                if (!e.changedTouches[0]) return;
+                if (!isSwiping) return;
                 
-                const touchEndX = e.changedTouches[0].clientX;
-                const touchEndY = e.changedTouches[0].clientY;
-                const diffX = touchStartX - touchEndX;
-                const diffY = Math.abs(touchStartY - touchEndY);
-
-                console.log('Swipe detected:', { touchStartX, touchEndX, diffX, diffY, menuOpen });
-
-                // Swipe left from right edge to open (more lenient detection)
-                if (!menuOpen && touchStartX > window.innerWidth - 80 && diffX > 30 && diffY < 150) {
-                    console.log('Opening menu via swipe');
-                    toggleMenu();
-                }
-                // Swipe right to close
-                else if (menuOpen && diffX < -30 && diffY < 150) {
-                    console.log('Closing menu via swipe');
-                    toggleMenu();
-                }
-            }, { passive: true });
-
-            // Mouse drag for desktop testing
-            let mouseStartX = 0;
-            let isDragging = false;
-
-            document.addEventListener('mousedown', (e) => {
-                mouseStartX = e.clientX;
-                isDragging = true;
-            });
-
-            document.addEventListener('mousemove', (e) => {
-                if (!isDragging) return;
-                // Visual feedback while dragging from edge
-                if (mouseStartX > window.innerWidth - 80) {
-                    e.preventDefault();
+                const touchX = e.touches[0].clientX;
+                const deltaX = touchStartX - touchX;
+                
+                // Swiping left (deltaX positive) opens the menu
+                if (deltaX > 50) {
+                    characterMenu.classList.add('open');
+                    isSwiping = false;
                 }
             });
 
-            document.addEventListener('mouseup', (e) => {
-                if (!isDragging) return;
-                isDragging = false;
-                
-                const diffX = mouseStartX - e.clientX;
-                
-                console.log('Mouse drag:', { mouseStartX, clientX: e.clientX, diffX, menuOpen });
-                
-                // Drag from right edge to open
-                if (!menuOpen && mouseStartX > window.innerWidth - 80 && diffX > 30) {
-                    console.log('Opening menu via drag');
-                    toggleMenu();
+            document.addEventListener('touchend', () => {
+                isSwiping = false;
+            });
+
+            // Close menu when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!characterMenu.contains(e.target) && e.target !== toggleBtn) {
+                    characterMenu.classList.remove('open');
                 }
-                // Drag right to close
-                else if (menuOpen && diffX < -30) {
-                    console.log('Closing menu via drag');
-                    toggleMenu();
+            });
+
+            // Close menu when tapping outside on mobile
+            document.addEventListener('touchstart', (e) => {
+                if (!characterMenu.contains(e.target) && characterMenu.classList.contains('open')) {
+                    characterMenu.classList.remove('open');
                 }
             });
         }
 
-        function toggleMenu() {
-            const menu = document.getElementById('character-menu');
+        // WebSocket connection
+        function connectWebSocket() {
+            console.log(`Connecting to WebSocket: ${BACKEND_URL}/ws`);
             
-            menuOpen = !menuOpen;
-            
-            console.log('toggleMenu called, menuOpen:', menuOpen);
-            
-            if (menuOpen) {
-                menu.classList.add('open');
-            } else {
-                menu.classList.remove('open');
-            }
+            ws = new WebSocket(BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws');
+
+            ws.onopen = () => {
+                console.log('WebSocket connected!');
+                isConnected = true;
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received:', data);
+
+                if (data.type === 'response') {
+                    // Display response in console for now
+                    console.log('Assistant:', data.text);
+                    
+                    // Request TTS
+                    ws.send(JSON.stringify({
+                        type: 'tts',
+                        text: data.text,
+                        voice: 'asuka'
+                    }));
+                } else if (data.type === 'audio') {
+                    // Play audio and trigger lip sync
+                    playAudioWithLipSync(data.data);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                isConnected = false;
+                // Attempt reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
         }
 
-        function selectCharacter(characterId) {
-            if (characterId === currentCharacterId) {
-                toggleMenu();
-                return;
-            }
-
-            currentCharacterId = characterId;
+        function playAudioWithLipSync(audioBase64) {
+            const audio = new Audio('data:audio/wav;base64,' + audioBase64);
             
-            // Update active state in UI
-            document.querySelectorAll('.character-item').forEach((item, index) => {
-                if (characters[index].id === characterId) {
-                    item.classList.add('active');
-                } else {
-                    item.classList.remove('active');
-                }
+            audio.onloadedmetadata = () => {
+                const durationMs = audio.duration * 1000;
+                startLipSync(durationMs);
+            };
+
+            audio.play().catch(err => {
+                console.error('Audio playback error:', err);
             });
 
-            // Show loading and load new character
-            loadingDiv.style.display = 'block';
-            loadingDiv.querySelector('div:last-child').textContent = 'Loading new character...';
-            
-            loadVRM();
-            toggleMenu();
-        }
-        // ================================================
+            const speakBtn = document.getElementById('speak-btn');
+            speakBtn.classList.add('speaking');
+            speakBtn.textContent = '🔊';
 
-        async function loadVRM() {
-            try {
-                // Get the selected character's URL
-                const selectedCharacter = characters.find(c => c.id === currentCharacterId);
-                const modelUrl = selectedCharacter ? selectedCharacter.url : characters[0].url;
-
-                loadingDiv.querySelector('div:last-child').textContent = 'Downloading model...';
-
-                // Fetch the VRM file as a blob to avoid CORS issues
-                const response = await fetch(modelUrl);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const blob = await response.blob();
-                const blobUrl = URL.createObjectURL(blob);
-
-                loadingDiv.querySelector('div:last-child').textContent = 'Loading VRM...';
-
-                // Load the VRM from the blob URL
-                const loader = new GLTFLoader();
-                loader.register((parser) => {
-                    return new VRMLoaderPlugin(parser);
-                });
-
-                loader.load(
-                    blobUrl,
-                    (gltf) => {
-                        const vrm = gltf.userData.vrm;
-
-                        if (vrm) {
-                            // Remove previous VRM if exists
-                            if (currentVrm) {
-                                scene.remove(currentVrm.scene);
-                                VRMUtils.deepDispose(currentVrm.scene);
-                            }
-
-                            currentVrm = vrm;
-
-                            // Disable VRM's built-in lookAt to prevent conflicts with manual tracking
-                            if (vrm.lookAt) {
-                                vrm.lookAt.target = null;
-                            }
-
-                            // Face the camera (no rotation needed - default is facing forward)
-                            vrm.scene.rotation.y = 0;
-
-                            // Position character
-                            vrm.scene.position.set(0, 0, 0);
-
-                            scene.add(vrm.scene);
-
-                            // Initialize idle animation
-                            initIdleAnimation();
-
-                            // Hide loading indicator
-                            loadingDiv.style.display = 'none';
-
-                            console.log('VRM model loaded successfully!');
-                        }
-
-                        // Clean up blob URL
-                        URL.revokeObjectURL(blobUrl);
-                    },
-                    (progress) => {
-                        const percent = (progress.loaded / progress.total * 100).toFixed(0);
-                        loadingDiv.querySelector('div:last-child').textContent = `Processing... ${percent}%`;
-                    },
-                    (error) => {
-                        console.error('Error loading VRM:', error);
-                        loadingDiv.style.display = 'none';
-                        errorDiv.style.display = 'block';
-                        errorDiv.textContent = 'Failed to load model. Check console for details.';
-                        URL.revokeObjectURL(blobUrl);
-                    }
-                );
-            } catch (error) {
-                console.error('Error fetching VRM:', error);
-                loadingDiv.style.display = 'none';
-                errorDiv.style.display = 'block';
-                errorDiv.textContent = `Failed to download model: ${error.message}`;
-            }
+            audio.onended = () => {
+                speakBtn.classList.remove('speaking');
+                speakBtn.textContent = 'Send';
+            };
         }
 
-        function initIdleAnimation() {
-            if (!currentVrm) return;
-            
-            console.log('Idle animation initialized');
-            idleAnimation.blinkTimer = Math.random() * idleAnimation.blinkInterval;
+        // Text input handler
+        function initTextInput() {
+            const textInput = document.getElementById('text-input');
+            const speakBtn = document.getElementById('speak-btn');
 
-            // Set natural standing pose (fix T-pose)
-            setNaturalPose();
-        }
+            const sendMessage = () => {
+                const text = textInput.value.trim();
+                if (!text || !isConnected) return;
 
-        function setNaturalPose() {
-            if (!currentVrm || !currentVrm.humanoid) return;
-
-            // Get bone references
-            const leftUpperArm = currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm');
-            const rightUpperArm = currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm');
-            const leftLowerArm = currentVrm.humanoid.getNormalizedBoneNode('leftLowerArm');
-            const rightLowerArm = currentVrm.humanoid.getNormalizedBoneNode('rightLowerArm');
-            const leftHand = currentVrm.humanoid.getNormalizedBoneNode('leftHand');
-            const rightHand = currentVrm.humanoid.getNormalizedBoneNode('rightHand');
-
-            // ============ POSE CUSTOMIZATION - EDIT VALUES HERE ============
-            
-            // UPPER ARMS (shoulder to elbow)
-            // rotation.z: controls up/down movement (higher value = further down)
-            //   - Left arm: negative values lower arm, positive raises it
-            //   - Right arm: positive values lower arm, negative raises it
-            // rotation.x: controls forward/back (positive = forward, negative = back)
-            if (leftUpperArm) {
-                leftUpperArm.rotation.z = -1.4;  // -1.4 = arms at sides (try -1.0 to -2.0)
-                leftUpperArm.rotation.x = 0.3;   // 0.3 = slight forward (try 0 to 0.5)
-            }
-            if (rightUpperArm) {
-                rightUpperArm.rotation.z = 1.4;  // Mirror of left arm
-                rightUpperArm.rotation.x = 0.3;  // Mirror of left arm
-            }
-
-            // LOWER ARMS (elbow to wrist)
-            // rotation.y: controls elbow bend (higher = more bent)
-            if (leftLowerArm) {
-                leftLowerArm.rotation.y = -0.5;  // -0.5 = slight bend (try -0.3 to -0.8)
-            }
-            if (rightLowerArm) {
-                rightLowerArm.rotation.y = 0.5;  // Mirror of left arm
-            }
-
-            // HANDS (wrist rotation)
-            // rotation.z: controls wrist tilt up/down
-            //   - Left hand: negative = tilt down, positive = tilt up
-            //   - Right hand: positive = tilt down, negative = tilt up
-            if (leftHand) {
-                leftHand.rotation.z = -0.2;   // -0.2 = subtle tilt down (try -0.1 to -0.5)
-            }
-            if (rightHand) {
-                rightHand.rotation.z = 0.2;   // Mirror of left hand
-            }
-            
-            // ================================================================
-
-            console.log('Natural pose applied');
-        }
-
-        function updateIdleAnimation(deltaTime) {
-            if (!currentVrm) return;
-
-            const elapsedTime = clock.getElapsedTime();
-
-            // Breathing animation (chest/spine movement)
-            const breathingOffset = Math.sin(elapsedTime * idleAnimation.breathingSpeed) * idleAnimation.breathingAmount;
-            if (currentVrm.humanoid) {
-                const spine = currentVrm.humanoid.getNormalizedBoneNode('spine');
-                const chest = currentVrm.humanoid.getNormalizedBoneNode('chest');
+                console.log('Sending:', text);
                 
-                if (spine) {
-                    spine.position.y = breathingOffset;
-                }
-                if (chest) {
-                    chest.rotation.x = breathingOffset * 0.5;
-                }
-            }
+                ws.send(JSON.stringify({
+                    type: 'message',
+                    text: text
+                }));
 
-            // Blinking animation
-            idleAnimation.blinkTimer += deltaTime;
+                textInput.value = '';
+            };
+
+            speakBtn.addEventListener('click', sendMessage);
+            textInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+        }
+
+        // Initialize everything
+        async function init() {
+            console.log('🎭 Initializing Live2D system...');
             
-            if (!idleAnimation.isBlinking && idleAnimation.blinkTimer >= idleAnimation.blinkInterval) {
-                // Start blink
-                idleAnimation.isBlinking = true;
-                idleAnimation.blinkTimer = 0;
-            }
-
-            if (idleAnimation.isBlinking) {
-                const blinkProgress = idleAnimation.blinkTimer / idleAnimation.blinkDuration;
-                
-                if (blinkProgress < 0.5) {
-                    // Closing eyes
-                    const closeFactor = blinkProgress * 2; // 0 to 1
-                    setEyeBlinkValue(closeFactor);
-                } else if (blinkProgress < 1.0) {
-                    // Opening eyes
-                    const openFactor = 1 - ((blinkProgress - 0.5) * 2); // 1 to 0
-                    setEyeBlinkValue(openFactor);
-                } else {
-                    // Blink complete
-                    setEyeBlinkValue(0);
-                    idleAnimation.isBlinking = false;
-                    idleAnimation.blinkTimer = Math.random() * idleAnimation.blinkInterval;
-                }
-            }
-        }
-
-        function setEyeBlinkValue(value) {
-            if (!currentVrm || !currentVrm.expressionManager) return;
+            initPixi();
+            initCharacterSelector();
+            initTextInput();
             
-            // Try common blink expression names
-            const blinkExpressions = ['blink', 'blinkLeft', 'blinkRight', 'Blink', 'blink_L', 'blink_R'];
+            // Load default character
+            await loadLive2DModel(CHARACTERS[0]);
             
-            for (const expressionName of blinkExpressions) {
-                try {
-                    currentVrm.expressionManager.setValue(expressionName, value);
-                } catch (e) {
-                    // Expression might not exist, that's okay
-                }
-            }
+            // Connect to backend
+            connectWebSocket();
+            
+            console.log('✅ System ready!');
         }
 
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            const deltaTime = clock.getDelta();
-
-            // Update cursor tracking
-            updateCursorTracking();
-
-            // Update lip-sync (TEMPORARY - for testing)
-            updateLipSync();
-
-            // Update idle animation
-            updateIdleAnimation(deltaTime);
-
-            // Update VRM if loaded
-            if (currentVrm) {
-                currentVrm.update(deltaTime);
-            }
-
-            // controls.update(); // Removed - no controls anymore
-            renderer.render(scene, camera);
-        }
-
-        // Start the application
+        // Start the app
         init();
-
-        // Register service worker for PWA
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then((registration) => {
-                        console.log('Service Worker registered:', registration);
-                    })
-                    .catch((error) => {
-                        console.log('Service Worker registration failed:', error);
-                    });
-            });
-        }
     </script>
 </body>
 </html>

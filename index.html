@@ -231,6 +231,34 @@
             z-index: 10;
             backdrop-filter: blur(10px);
         }
+
+        /* Test lip sync button */
+        #test-lipsync {
+            position: fixed;
+            top: 80px;
+            left: 20px;
+            background: rgba(255, 100, 100, 0.7);
+            border: none;
+            border-radius: 10px;
+            padding: 10px 15px;
+            color: white;
+            font-size: 12px;
+            cursor: pointer;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s;
+        }
+
+        #test-lipsync:hover {
+            background: rgba(255, 100, 100, 0.9);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            #test-lipsync {
+                display: none; /* Hide on mobile */
+            }
+        }
     </style>
 </head>
 <body>
@@ -249,6 +277,8 @@
         <div>🎭 Live2D System</div>
         <div id="model-status">No model loaded</div>
     </div>
+
+    <button id="test-lipsync">🗣️ Test Lip Sync</button>
 
     <!-- Character selector toggle button -->
     <button id="character-toggle">👤</button>
@@ -277,15 +307,44 @@
         // Configuration
         const BACKEND_URL = 'https://waifuassistant.duckdns.org';
         
+        // Path to your custom models folder (relative to this HTML file)
+        // Put your Neptunia models in: /models/neptunia-character-name/
+        const CUSTOM_MODELS_PATH = './models/';
+        
         // Available Live2D characters
         const CHARACTERS = [
+            // ========== YOUR CUSTOM MODELS ==========
+            // Uncomment and configure these for your Neptunia models:
+            /*
+            {
+                id: 'neptune',
+                name: 'Neptune',
+                description: 'Neptunia - Purple Heart',
+                modelUrl: CUSTOM_MODELS_PATH + 'neptune/neptune.model3.json',  // or .model.json for v2
+                scale: 0.1,
+                position: { x: 0, y: 0.1 },
+                isCustom: true
+            },
+            {
+                id: 'noire',
+                name: 'Noire',
+                description: 'Neptunia - Black Heart',
+                modelUrl: CUSTOM_MODELS_PATH + 'noire/noire.model3.json',
+                scale: 0.1,
+                position: { x: 0, y: 0.1 },
+                isCustom: true
+            },
+            */
+            
+            // ========== BUILT-IN EXAMPLES (CDN) ==========
             {
                 id: 'hiyori',
                 name: 'Hiyori (Example)',
                 description: 'Sample Live2D character',
                 modelUrl: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/hiyori/hiyori.model.json',
                 scale: 0.1,
-                position: { x: 0, y: 0.1 }
+                position: { x: 0, y: 0.1 },
+                isCustom: false
             },
             {
                 id: 'shizuku',
@@ -293,7 +352,8 @@
                 description: 'Another sample character',
                 modelUrl: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/shizuku/shizuku.model.json',
                 scale: 0.08,
-                position: { x: 0, y: 0.15 }
+                position: { x: 0, y: 0.15 },
+                isCustom: false
             }
         ];
 
@@ -491,9 +551,14 @@
                     const elapsed = Date.now() - lipSyncState.speakingStartTime;
                     const progress = Math.min(elapsed / lipSyncState.speakingDuration, 1);
                     
-                    // Oscillate mouth during speaking
-                    const oscillation = Math.sin(elapsed * 0.02) * 0.5 + 0.5; // 0 to 1
-                    lipSyncState.targetMouthOpen = oscillation * 0.8;
+                    // Create more varied mouth movement (like talking)
+                    const baseOscillation = Math.sin(elapsed * 0.025) * 0.5 + 0.5; // Slower base
+                    const microOscillation = Math.sin(elapsed * 0.08) * 0.3; // Faster variation
+                    const combinedOscillation = (baseOscillation + microOscillation) / 1.3; // Combine both
+                    
+                    // Mouth opens more at the beginning/middle of speaking
+                    const intensityCurve = Math.sin(progress * Math.PI); // 0 -> 1 -> 0
+                    lipSyncState.targetMouthOpen = combinedOscillation * intensityCurve * 1.0;
                     
                     if (progress >= 1) {
                         lipSyncState.isSpeaking = false;
@@ -504,11 +569,18 @@
                 // Smooth mouth movement
                 lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * lipSyncState.smoothingFactor;
 
-                // Apply to model
-                const mouthParams = ['ParamMouthOpenY', 'PARAM_MOUTH_OPEN_Y'];
+                // Apply to model - try multiple common parameter names
+                const mouthParams = [
+                    'ParamMouthOpenY',      // Cubism 3/4
+                    'PARAM_MOUTH_OPEN_Y',   // Cubism 2
+                    'ParamMouthOpen',       // Alternative
+                    'PARAM_MOUTH_OPEN'      // Alternative
+                ];
+                
                 for (const param of mouthParams) {
                     const index = coreModel.getParameterIndex(param);
                     if (index >= 0) {
+                        // Scale to appropriate range (usually 0 to 1)
                         coreModel.setParameterValueById(index, lipSyncState.currentMouthOpen);
                     }
                 }
@@ -541,7 +613,18 @@
             lipSyncState.isSpeaking = true;
             lipSyncState.speakingStartTime = Date.now();
             lipSyncState.speakingDuration = durationMs;
-            console.log(`Started lip sync for ${durationMs}ms`);
+            console.log(`🗣️ Started lip sync for ${durationMs}ms (${(durationMs/1000).toFixed(2)}s)`);
+        }
+
+        // Test lip sync button
+        function initTestLipSync() {
+            const testBtn = document.getElementById('test-lipsync');
+            if (testBtn) {
+                testBtn.addEventListener('click', () => {
+                    console.log('Testing lip sync for 3 seconds...');
+                    startLipSync(3000); // 3 second test
+                });
+            }
         }
 
         // Character selection UI
@@ -725,6 +808,7 @@
             initPixi();
             initCharacterSelector();
             initTextInput();
+            initTestLipSync();
             
             // Load default character
             await loadLive2DModel(CHARACTERS[0]);

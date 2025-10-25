@@ -353,6 +353,88 @@
             white-space: pre;
         }
 
+        #position-display.always-visible {
+            display: block;
+        }
+
+        /* Settings toggle section */
+        .settings-section {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .settings-section h3 {
+            color: #00d4ff;
+            font-size: 14px;
+            margin: 0 0 10px 0;
+        }
+
+        .toggle-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .toggle-option label {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 12px;
+            flex: 1;
+        }
+
+        /* Toggle switch */
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            cursor: pointer;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #00d4ff;
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+
+        /* Hide edit controls when toggled off */
+        #edit-controls.hidden {
+            display: none;
+        }
+
         /* Test lip sync button */
         #test-lipsync {
             position: fixed;
@@ -407,6 +489,27 @@
     <!-- Character selection menu -->
     <div id="character-menu">
         <h2>Select Character</h2>
+        
+        <!-- Settings Section -->
+        <div class="settings-section">
+            <h3>⚙️ Settings</h3>
+            
+            <div class="toggle-option">
+                <label>Show Position Controls</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-edit-controls" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            
+            <div class="toggle-option">
+                <label>Always Show Position Display</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-position-display">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
         
         <!-- Live editing controls -->
         <div id="edit-controls">
@@ -516,7 +619,9 @@
             currentMouthOpen: 0,
             smoothingFactor: 0.3,
             speakingStartTime: 0,
-            speakingDuration: 0
+            speakingDuration: 0,
+            debugLogged: false,
+            errorLogged: false
         };
 
         // Mouse tracking
@@ -701,13 +806,13 @@
             
             if (screenWidth < 480) {
                 // Small mobile phones
-                scaleMultiplier = 0.8;
+                scaleMultiplier = 1.5;
             } else if (screenWidth < 768) {
                 // Large phones / small tablets
-                scaleMultiplier = 1.0;
+                scaleMultiplier = 1.5;
             } else if (screenWidth < 1024) {
                 // Tablets
-                scaleMultiplier = 1.2;
+                scaleMultiplier = 1.5;
             } else if (screenWidth < 1920) {
                 // Desktop / laptop
                 scaleMultiplier = 1.5;
@@ -830,18 +935,49 @@
                     'ParamMouthOpenY',      // Cubism 3/4
                     'PARAM_MOUTH_OPEN_Y',   // Cubism 2
                     'ParamMouthOpen',       // Alternative
-                    'PARAM_MOUTH_OPEN'      // Alternative
+                    'PARAM_MOUTH_OPEN',     // Alternative
+                    'Mouth',                // Simple name
+                    'MouthOpen',            // Another variant
+                    'MouthOpenY'            // Another variant
                 ];
                 
+                let appliedToParam = false;
                 for (const param of mouthParams) {
                     const index = coreModel.getParameterIndex(param);
                     if (index >= 0) {
                         // Scale to appropriate range (usually 0 to 1)
                         coreModel.setParameterValueById(index, lipSyncState.currentMouthOpen);
+                        appliedToParam = true;
                     }
                 }
+                
+                // Debug: Log once when speaking starts
+                if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
+                    console.log('💬 Lip sync active, mouth value:', lipSyncState.currentMouthOpen.toFixed(3));
+                    console.log('Applied to parameter:', appliedToParam ? '✅' : '❌');
+                    if (!appliedToParam) {
+                        console.warn('No mouth parameter found! Available parameters:', 
+                            Array.from({length: coreModel.getParameterCount()}, (_, i) => 
+                                coreModel.getParameterId(i)
+                            ).join(', ')
+                        );
+                    }
+                    lipSyncState.debugLogged = true;
+                }
+                
+                if (!lipSyncState.isSpeaking) {
+                    lipSyncState.debugLogged = false;
+                }
+                
             } catch (error) {
                 // Parameters might not exist
+                if (lipSyncState.isSpeaking && !lipSyncState.errorLogged) {
+                    console.error('Lip sync error:', error);
+                    lipSyncState.errorLogged = true;
+                }
+                if (!lipSyncState.isSpeaking) {
+                    lipSyncState.errorLogged = false;
+                }
             }
         }
 
@@ -889,6 +1025,12 @@
             const characterMenu = document.getElementById('character-menu');
             const toggleBtn = document.getElementById('character-toggle');
             
+            // Settings toggles
+            const toggleEditControls = document.getElementById('toggle-edit-controls');
+            const togglePositionDisplay = document.getElementById('toggle-position-display');
+            const editControls = document.getElementById('edit-controls');
+            const positionDisplay = document.getElementById('position-display');
+            
             // Live editing controls
             const scaleSlider = document.getElementById('scale-slider');
             const xSlider = document.getElementById('x-slider');
@@ -898,7 +1040,46 @@
             const yValue = document.getElementById('y-value');
             const resetBtn = document.getElementById('reset-btn');
             const copyBtn = document.getElementById('copy-btn');
-            const positionDisplay = document.getElementById('position-display');
+
+            // Load settings from localStorage
+            const showEditControls = localStorage.getItem('showEditControls') !== 'false'; // default true
+            const alwaysShowPosition = localStorage.getItem('alwaysShowPosition') === 'true'; // default false
+            
+            toggleEditControls.checked = showEditControls;
+            togglePositionDisplay.checked = alwaysShowPosition;
+            
+            if (!showEditControls) {
+                editControls.classList.add('hidden');
+            }
+            
+            if (alwaysShowPosition) {
+                positionDisplay.classList.add('always-visible');
+            }
+
+            // Handle edit controls toggle
+            toggleEditControls.addEventListener('change', () => {
+                const isChecked = toggleEditControls.checked;
+                localStorage.setItem('showEditControls', isChecked);
+                
+                if (isChecked) {
+                    editControls.classList.remove('hidden');
+                } else {
+                    editControls.classList.add('hidden');
+                }
+            });
+
+            // Handle position display toggle
+            togglePositionDisplay.addEventListener('change', () => {
+                const isChecked = togglePositionDisplay.checked;
+                localStorage.setItem('alwaysShowPosition', isChecked);
+                
+                if (isChecked) {
+                    positionDisplay.classList.add('always-visible');
+                    updateModel(); // Update to show current values
+                } else {
+                    positionDisplay.classList.remove('always-visible');
+                }
+            });
 
             // Update display values and model in real-time
             function updateModel() {
@@ -921,9 +1102,13 @@
                 // Reposition model
                 positionModel(currentModel, currentCharacter);
                 
-                // Show position display at bottom
-                positionDisplay.style.display = 'block';
+                // Show position display
                 positionDisplay.textContent = `scale: ${scale.toFixed(2)}  |  x: ${x.toFixed(2)}  |  y: ${y.toFixed(2)}`;
+                
+                // Only show temporarily if not set to always visible
+                if (!togglePositionDisplay.checked) {
+                    positionDisplay.style.display = 'block';
+                }
             }
             
             // Attach listeners
@@ -1059,7 +1244,10 @@
             document.addEventListener('click', (e) => {
                 if (characterMenu.classList.contains('open')) {
                     characterMenu.classList.remove('open');
-                    positionDisplay.style.display = 'none';
+                    // Only hide position display if not set to always visible
+                    if (!togglePositionDisplay.checked) {
+                        positionDisplay.style.display = 'none';
+                    }
                 }
             });
 
@@ -1068,7 +1256,10 @@
                 if (!characterMenu.contains(e.target) && characterMenu.classList.contains('open')) {
                     e.stopPropagation();
                     characterMenu.classList.remove('open');
-                    positionDisplay.style.display = 'none';
+                    // Only hide position display if not set to always visible
+                    if (!togglePositionDisplay.checked) {
+                        positionDisplay.style.display = 'none';
+                    }
                 }
             });
         }

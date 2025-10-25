@@ -587,9 +587,9 @@
                 description: 'Hyperdimension Neptunia',
                 modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
                 scale: 0.30,
-                scaleMobile: 0.30,
+                scaleMobile: 0.24,
                 position: { x: 0.02, y: 0.24 },
-                positionMobile: { x: 0.16, y: 0.24 },
+                positionMobile: { x: 0.13, y: 0.30 },
                 isCustom: true
             },
             
@@ -880,17 +880,11 @@
         }
 
         function updateLipSync(model) {
-            if (!model || !model.internalModel || !model.internalModel.coreModel) return;
+            if (!model || !model.internalModel) return;
             
             try {
-                const coreModel = model.internalModel.coreModel;
-                
-                // Check if parameters exist
-                if (!coreModel.parameters) {
-                    return;
-                }
-                
-                const parameters = coreModel.parameters;
+                // Use the Cubism 4 SDK's built-in lip sync through motion manager
+                const internalModel = model.internalModel;
                 
                 // Animate mouth open/close during speaking
                 if (lipSyncState.isSpeaking) {
@@ -898,12 +892,12 @@
                     const progress = Math.min(elapsed / lipSyncState.speakingDuration, 1);
                     
                     // Create more varied mouth movement (like talking)
-                    const baseOscillation = Math.sin(elapsed * 0.025) * 0.5 + 0.5; // Slower base
-                    const microOscillation = Math.sin(elapsed * 0.08) * 0.3; // Faster variation
-                    const combinedOscillation = (baseOscillation + microOscillation) / 1.3; // Combine both
+                    const baseOscillation = Math.sin(elapsed * 0.025) * 0.5 + 0.5;
+                    const microOscillation = Math.sin(elapsed * 0.08) * 0.3;
+                    const combinedOscillation = (baseOscillation + microOscillation) / 1.3;
                     
                     // Mouth opens more at the beginning/middle of speaking
-                    const intensityCurve = Math.sin(progress * Math.PI); // 0 -> 1 -> 0
+                    const intensityCurve = Math.sin(progress * Math.PI);
                     lipSyncState.targetMouthOpen = combinedOscillation * intensityCurve * 1.0;
                     
                     if (progress >= 1) {
@@ -915,42 +909,26 @@
                 // Smooth mouth movement
                 lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * lipSyncState.smoothingFactor;
 
-                // Apply to model - try multiple common parameter names
-                const mouthParams = [
-                    'ParamMouthOpenY',
-                    'PARAM_MOUTH_OPEN_Y',
-                    'ParamMouthOpen',
-                    'PARAM_MOUTH_OPEN',
-                    'Mouth',
-                    'MouthOpen',
-                    'MouthOpenY'
-                ];
-                
-                let appliedToParam = false;
-                for (let i = 0; i < parameters.count; i++) {
-                    const paramId = parameters.ids[i];
-                    if (mouthParams.includes(paramId)) {
-                        parameters.values[i] = lipSyncState.currentMouthOpen;
-                        appliedToParam = true;
+                // Use the motion manager's setParameterValueById method
+                if (internalModel.motionManager && internalModel.coreModel) {
+                    const coreModel = internalModel.coreModel;
+                    
+                    // Set the ParamMouthOpenY value directly
+                    internalModel.motionManager.setParameterValueById('ParamMouthOpenY', lipSyncState.currentMouthOpen, 1.0);
+                    
+                    // Debug: Log once when speaking starts
+                    if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
+                        console.log('💬 Lip sync active, mouth value:', lipSyncState.currentMouthOpen.toFixed(3));
+                        console.log('Setting ParamMouthOpenY via motionManager');
+                        lipSyncState.debugLogged = true;
                     }
-                }
-                
-                // Debug: Log once when speaking starts
-                if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
-                    console.log('💬 Lip sync active, mouth value:', lipSyncState.currentMouthOpen.toFixed(3));
-                    console.log('Applied to parameter:', appliedToParam ? '✅' : '❌');
-                    if (!appliedToParam) {
-                        console.warn('No mouth parameter found! Try clicking Test Lip Sync button to see available parameters');
+                    
+                    if (!lipSyncState.isSpeaking) {
+                        lipSyncState.debugLogged = false;
                     }
-                    lipSyncState.debugLogged = true;
-                }
-                
-                if (!lipSyncState.isSpeaking) {
-                    lipSyncState.debugLogged = false;
                 }
                 
             } catch (error) {
-                // Parameters might not exist
                 if (lipSyncState.isSpeaking && !lipSyncState.errorLogged) {
                     console.error('Lip sync error:', error);
                     lipSyncState.errorLogged = true;
@@ -1010,40 +988,49 @@
                         
                         const coreModel = currentModel.internalModel.coreModel;
                         
-                        // Check if parameters exist
-                        if (!coreModel.parameters) {
-                            console.error('Parameters object not available');
-                            return;
-                        }
+                        // Debug the structure
+                        console.log('CoreModel type:', coreModel.constructor.name);
+                        console.log('CoreModel keys:', Object.keys(coreModel));
                         
-                        // Different API for Cubism 4
-                        const parameters = coreModel.parameters;
-                        console.log(`Total parameters: ${parameters.count}`);
-                        
-                        // List all parameters
-                        const allParams = [];
-                        const mouthParams = [];
-                        
-                        for (let i = 0; i < parameters.count; i++) {
-                            const paramId = parameters.ids[i];
-                            const value = parameters.values[i];
-                            const min = parameters.minimumValues[i];
-                            const max = parameters.maximumValues[i];
+                        // Try different possible locations
+                        if (coreModel.parameters) {
+                            console.log('Found: coreModel.parameters');
+                            const parameters = coreModel.parameters;
+                            console.log(`Total parameters: ${parameters.count}`);
+                        } else if (coreModel._parameters) {
+                            console.log('Found: coreModel._parameters');
+                            const parameters = coreModel._parameters;
+                            console.log(`Total parameters: ${parameters.count}`);
+                        } else if (coreModel.getParameterCount) {
+                            console.log('Found: coreModel.getParameterCount() method');
+                            const count = coreModel.getParameterCount();
+                            console.log(`Total parameters: ${count}`);
                             
-                            allParams.push(paramId);
+                            // List parameters using getter methods
+                            const allParams = [];
+                            const mouthParams = [];
                             
-                            // Log mouth-related parameters
-                            if (paramId.toLowerCase().includes('mouth') || 
-                                paramId.toLowerCase().includes('lip')) {
-                                console.log(`  🗣️  ${paramId}: ${value.toFixed(3)} (range: ${min} to ${max})`);
-                                mouthParams.push(paramId);
+                            for (let i = 0; i < count; i++) {
+                                const paramId = coreModel.getParameterId(i);
+                                allParams.push(paramId);
+                                
+                                if (paramId.toLowerCase().includes('mouth') || 
+                                    paramId.toLowerCase().includes('lip')) {
+                                    mouthParams.push(paramId);
+                                    console.log(`  🗣️  ${paramId}`);
+                                }
                             }
+                            
+                            console.log('Mouth-related parameters:', mouthParams.length > 0 ? mouthParams.join(', ') : 'NONE FOUND!');
+                            console.log('All parameters:', allParams.join(', '));
+                        } else {
+                            console.error('Cannot find parameter access method');
+                            console.log('Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(coreModel)));
                         }
                         
-                        console.log('Mouth-related parameters:', mouthParams.length > 0 ? mouthParams.join(', ') : 'NONE FOUND!');
-                        console.log('All parameters:', allParams.join(', '));
                     } catch (e) {
                         console.error('Error reading parameters:', e);
+                        console.error('Stack:', e.stack);
                     }
                     
                     // Trigger 3 second lip sync test

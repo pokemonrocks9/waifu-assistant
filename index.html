@@ -623,8 +623,33 @@
             speakingStartTime: 0,
             speakingDuration: 0,
             debugLogged: false,
-            errorLogged: false
+            errorLogged: false,
+            audioAnalyzer: null,
+            audioDataArray: null
         };
+
+        // Audio analysis for realistic lip sync
+        function setupAudioAnalysis(audio) {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaElementSource(audio);
+                const analyzer = audioContext.createAnalyser();
+                
+                analyzer.fftSize = 256;
+                const bufferLength = analyzer.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                source.connect(analyzer);
+                analyzer.connect(audioContext.destination);
+                
+                lipSyncState.audioAnalyzer = analyzer;
+                lipSyncState.audioDataArray = dataArray;
+                
+                console.log('🎤 Audio analysis setup complete');
+            } catch (error) {
+                console.error('Audio analysis setup failed:', error);
+            }
+        }
 
         // Mouse tracking
         let mouseX = 0;
@@ -885,35 +910,71 @@
             try {
                 const internalModel = model.internalModel;
                 
-                // Animate mouth open/close during speaking
+                // Animate mouth based on audio analysis or fallback to simple animation
                 if (lipSyncState.isSpeaking) {
                     const elapsed = Date.now() - lipSyncState.speakingStartTime;
                     const progress = Math.min(elapsed / lipSyncState.speakingDuration, 1);
                     
-                    // Create more varied mouth movement (like talking)
-                    const baseOscillation = Math.sin(elapsed * 0.025) * 0.5 + 0.5;
-                    const microOscillation = Math.sin(elapsed * 0.08) * 0.3;
-                    const combinedOscillation = (baseOscillation + microOscillation) / 1.3;
-                    
-                    // Mouth opens more at the beginning/middle of speaking
-                    const intensityCurve = Math.sin(progress * Math.PI);
-                    lipSyncState.targetMouthOpen = combinedOscillation * intensityCurve * 1.0;
+                    if (lipSyncState.audioAnalyzer && lipSyncState.audioDataArray) {
+                        // Real-time audio analysis
+                        lipSyncState.audioAnalyzer.getByteFrequencyData(lipSyncState.audioDataArray);
+                        
+                        // Calculate average volume (focusing on speech frequencies 85Hz-255Hz)
+                        let sum = 0;
+                        const startBin = 3;  // ~85Hz
+                        const endBin = 30;   // ~3kHz (speech range)
+                        for (let i = startBin; i < endBin; i++) {
+                            sum += lipSyncState.audioDataArray[i];
+                        }
+                        const average = sum / (endBin - startBin);
+                        
+                        // Normalize to 0-1 range and apply curve for more natural movement
+                        let volume = average / 255.0;
+                        
+                        // Apply some easing to make it look more natural
+                        volume = Math.pow(volume, 0.5); // Square root for softer curve
+                        
+                        // Add slight randomness for more natural feel
+                        volume += (Math.random() - 0.5) * 0.1;
+                        volume = Math.max(0, Math.min(1, volume));
+                        
+                        // Fade out near the end
+                        const fadeOutStart = 0.85;
+                        if (progress > fadeOutStart) {
+                            const fadeProgress = (progress - fadeOutStart) / (1 - fadeOutStart);
+                            volume *= (1 - fadeProgress);
+                        }
+                        
+                        lipSyncState.targetMouthOpen = volume;
+                    } else {
+                        // Fallback: Simple oscillation pattern
+                        const baseOscillation = Math.sin(elapsed * 0.025) * 0.5 + 0.5;
+                        const microOscillation = Math.sin(elapsed * 0.08) * 0.3;
+                        const combinedOscillation = (baseOscillation + microOscillation) / 1.3;
+                        
+                        const intensityCurve = Math.sin(progress * Math.PI);
+                        lipSyncState.targetMouthOpen = combinedOscillation * intensityCurve * 1.0;
+                    }
                     
                     if (progress >= 1) {
                         lipSyncState.isSpeaking = false;
                         lipSyncState.targetMouthOpen = 0;
+                        lipSyncState.audioAnalyzer = null;
+                        lipSyncState.audioDataArray = null;
                     }
                 }
 
-                // Smooth mouth movement
-                lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * lipSyncState.smoothingFactor;
+                // Smooth mouth movement with faster response
+                const smoothing = lipSyncState.audioAnalyzer ? 0.6 : 0.3; // Faster when using audio
+                lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * smoothing;
 
-                // Use setParameterValueById to set absolute value (not additive)
+                // Use setParameterValueById to set absolute value
                 if (internalModel.coreModel && typeof internalModel.coreModel.setParameterValueById === 'function') {
                     internalModel.coreModel.setParameterValueById('ParamMouthOpenY', lipSyncState.currentMouthOpen);
                     
                     if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
                         console.log('💬 Lip sync active via setParameterValueById:', lipSyncState.currentMouthOpen.toFixed(3));
+                        console.log('Audio analysis:', lipSyncState.audioAnalyzer ? 'ENABLED ✅' : 'DISABLED (fallback)');
                         lipSyncState.debugLogged = true;
                     }
                 } else {
@@ -1357,6 +1418,10 @@
             
             audio.onloadedmetadata = () => {
                 const durationMs = audio.duration * 1000;
+                
+                // Setup audio analysis for real-time lip sync
+                setupAudioAnalysis(audio);
+                
                 startLipSync(durationMs);
             };
 

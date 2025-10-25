@@ -326,7 +326,7 @@
                 name: 'Compa',
                 description: 'Hyperdimension Neptunia',
                 modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
-                scale: 1,
+                scale: 0.15,  // Base scale - will be multiplied by screen size
                 position: { x: 0, y: 0.1 },
                 isCustom: true
             },
@@ -533,15 +533,54 @@
         function positionModel(model, character) {
             // Center the model
             model.anchor.set(0.5, 0.5);
+            
+            // Calculate responsive scale based on screen size
+            const baseScale = character.scale;
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            
+            // Determine scale multiplier based on screen size
+            let scaleMultiplier = 1.0;
+            
+            if (screenWidth < 480) {
+                // Small mobile phones
+                scaleMultiplier = 0.8;
+            } else if (screenWidth < 768) {
+                // Large phones / small tablets
+                scaleMultiplier = 1.0;
+            } else if (screenWidth < 1024) {
+                // Tablets
+                scaleMultiplier = 1.2;
+            } else if (screenWidth < 1920) {
+                // Desktop / laptop
+                scaleMultiplier = 1.5;
+            } else {
+                // Large desktop / 4K
+                scaleMultiplier = 2.0;
+            }
+            
+            // Also factor in height for very tall/short screens
+            const aspectRatio = screenWidth / screenHeight;
+            if (aspectRatio < 0.6) {
+                // Very tall screen (narrow phone in portrait)
+                scaleMultiplier *= 0.9;
+            } else if (aspectRatio > 2) {
+                // Very wide screen (ultrawide monitor)
+                scaleMultiplier *= 1.2;
+            }
+            
+            // Calculate final scale maintaining aspect ratio
+            const finalScale = baseScale * scaleMultiplier;
+            
+            console.log(`Screen: ${screenWidth}x${screenHeight}, Scale: ${baseScale} → ${finalScale.toFixed(3)} (${scaleMultiplier}x)`);
+            
+            // Position on screen
             model.position.set(
                 window.innerWidth * (0.5 + character.position.x),
                 window.innerHeight * (0.5 + character.position.y)
             );
             
-            // Scale to fit screen nicely
-            const scaleX = (window.innerWidth / model.width) * character.scale;
-            const scaleY = (window.innerHeight / model.height) * character.scale;
-            const finalScale = Math.min(scaleX, scaleY);
+            // Apply uniform scale (no stretching)
             model.scale.set(finalScale);
         }
 

@@ -586,14 +586,10 @@
                 name: 'Compa',
                 description: 'Hyperdimension Neptunia',
                 modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
-                scale: 0.13,
-                scaleMultipliers: {
-                    mobile: 2.77,  // 0.36 / 0.13 = 2.77x for mobile
-                    tablet: 1.0,
-                    desktop: 1.0
-                },
+                scale: 0.13,           // Desktop base scale
+                scaleMobile: 0.36,     // Mobile scale (exact value)
                 position: { x: 0.02, y: 0.24 },
-                positionMobile: { x: 0.16, y: 0.24 }, // Different x for mobile
+                positionMobile: { x: 0.16, y: 0.24 },
                 isCustom: true
             },
             
@@ -802,47 +798,17 @@
             // Center the model
             model.anchor.set(0.5, 0.5);
             
-            // Calculate responsive scale based on screen size
-            const baseScale = character.scale;
             const screenWidth = window.innerWidth;
             const screenHeight = window.innerHeight;
             
-            // Determine device type and scale multiplier
-            let scaleMultiplier = 1.0;
-            let isMobile = false;
+            // Determine if mobile (phones) or desktop
+            const isMobile = screenWidth < 768;
             
-            if (screenWidth < 768) {
-                // Mobile (phones)
-                isMobile = true;
-                scaleMultiplier = character.scaleMultipliers?.mobile || 0.8;
-            } else if (screenWidth < 1024) {
-                // Tablets
-                scaleMultiplier = character.scaleMultipliers?.tablet || 1.2;
-            } else if (screenWidth < 1920) {
-                // Desktop / laptop
-                scaleMultiplier = character.scaleMultipliers?.desktop || 1.5;
-            } else {
-                // Large desktop / 4K
-                scaleMultiplier = character.scaleMultipliers?.desktop || 2.0;
-            }
-            
-            // Also factor in height for very tall/short screens
-            const aspectRatio = screenWidth / screenHeight;
-            if (aspectRatio < 0.6) {
-                // Very tall screen (narrow phone in portrait)
-                scaleMultiplier *= 0.9;
-            } else if (aspectRatio > 2) {
-                // Very wide screen (ultrawide monitor)
-                scaleMultiplier *= 1.2;
-            }
-            
-            // Calculate final scale maintaining aspect ratio
-            const finalScale = baseScale * scaleMultiplier;
-            
-            console.log(`Screen: ${screenWidth}x${screenHeight}, Device: ${isMobile ? 'Mobile' : 'Desktop'}, Scale: ${baseScale} → ${finalScale.toFixed(3)} (${scaleMultiplier}x)`);
-            
-            // Use mobile-specific position if available and on mobile
+            // Use mobile-specific scale and position if available and on mobile
+            const scale = (isMobile && character.scaleMobile !== undefined) ? character.scaleMobile : character.scale;
             const position = (isMobile && character.positionMobile) ? character.positionMobile : character.position;
+            
+            console.log(`Screen: ${screenWidth}x${screenHeight}, Device: ${isMobile ? 'Mobile' : 'Desktop'}, Scale: ${scale.toFixed(3)}, Position: x=${position.x.toFixed(2)}, y=${position.y.toFixed(2)}`);
             
             // Position on screen
             model.position.set(
@@ -851,7 +817,7 @@
             );
             
             // Apply uniform scale (no stretching)
-            model.scale.set(finalScale);
+            model.scale.set(scale);
         }
 
         function setupModelBehaviors(model) {
@@ -879,6 +845,7 @@
         function updateEyeTracking(model) {
             try {
                 const coreModel = model.internalModel.coreModel;
+                const parameters = coreModel.parameters;
                 
                 // Common Live2D eye parameters
                 const eyeParams = [
@@ -892,18 +859,19 @@
                 const eyeX = mouseX * 30; // Scale to appropriate range
                 const eyeY = mouseY * 30;
 
-                for (const param of eyeParams) {
-                    const index = coreModel.getParameterIndex(param);
-                    if (index >= 0) {
-                        const current = coreModel.getParameterValueById(index);
+                for (let i = 0; i < parameters.count; i++) {
+                    const paramId = parameters.ids[i];
+                    
+                    if (eyeParams.includes(paramId)) {
+                        const current = parameters.values[i];
                         let target = 0;
                         
-                        if (param.includes('X')) target = eyeX;
-                        if (param.includes('Y')) target = eyeY;
+                        if (paramId.includes('X')) target = eyeX;
+                        if (paramId.includes('Y')) target = eyeY;
                         
                         // Smooth interpolation
                         const smoothed = current + (target - current) * 0.1;
-                        coreModel.setParameterValueById(index, smoothed);
+                        parameters.values[i] = smoothed;
                     }
                 }
             } catch (error) {
@@ -914,6 +882,7 @@
         function updateLipSync(model) {
             try {
                 const coreModel = model.internalModel.coreModel;
+                const parameters = coreModel.parameters;
                 
                 // Animate mouth open/close during speaking
                 if (lipSyncState.isSpeaking) {
@@ -940,21 +909,20 @@
 
                 // Apply to model - try multiple common parameter names
                 const mouthParams = [
-                    'ParamMouthOpenY',      // Cubism 3/4
-                    'PARAM_MOUTH_OPEN_Y',   // Cubism 2
-                    'ParamMouthOpen',       // Alternative
-                    'PARAM_MOUTH_OPEN',     // Alternative
-                    'Mouth',                // Simple name
-                    'MouthOpen',            // Another variant
-                    'MouthOpenY'            // Another variant
+                    'ParamMouthOpenY',
+                    'PARAM_MOUTH_OPEN_Y',
+                    'ParamMouthOpen',
+                    'PARAM_MOUTH_OPEN',
+                    'Mouth',
+                    'MouthOpen',
+                    'MouthOpenY'
                 ];
                 
                 let appliedToParam = false;
-                for (const param of mouthParams) {
-                    const index = coreModel.getParameterIndex(param);
-                    if (index >= 0) {
-                        // Scale to appropriate range (usually 0 to 1)
-                        coreModel.setParameterValueById(index, lipSyncState.currentMouthOpen);
+                for (let i = 0; i < parameters.count; i++) {
+                    const paramId = parameters.ids[i];
+                    if (mouthParams.includes(paramId)) {
+                        parameters.values[i] = lipSyncState.currentMouthOpen;
                         appliedToParam = true;
                     }
                 }
@@ -964,11 +932,7 @@
                     console.log('💬 Lip sync active, mouth value:', lipSyncState.currentMouthOpen.toFixed(3));
                     console.log('Applied to parameter:', appliedToParam ? '✅' : '❌');
                     if (!appliedToParam) {
-                        console.warn('No mouth parameter found! Available parameters:', 
-                            Array.from({length: coreModel.getParameterCount()}, (_, i) => 
-                                coreModel.getParameterId(i)
-                            ).join(', ')
-                        );
+                        console.warn('No mouth parameter found! Try clicking Test Lip Sync button to see available parameters');
                     }
                     lipSyncState.debugLogged = true;
                 }
@@ -992,16 +956,17 @@
         function updateBreathing(model) {
             try {
                 const coreModel = model.internalModel.coreModel;
+                const parameters = coreModel.parameters;
                 const time = Date.now() * 0.001;
                 
                 // Gentle breathing motion (Live2D usually has this built-in, but we can enhance)
                 const breathValue = Math.sin(time * 2) * 0.5 + 0.5; // 0 to 1
                 
                 const breathParams = ['ParamBreath', 'PARAM_BREATH'];
-                for (const param of breathParams) {
-                    const index = coreModel.getParameterIndex(param);
-                    if (index >= 0) {
-                        coreModel.setParameterValueById(index, breathValue);
+                for (let i = 0; i < parameters.count; i++) {
+                    const paramId = parameters.ids[i];
+                    if (breathParams.includes(paramId)) {
+                        parameters.values[i] = breathValue;
                     }
                 }
             } catch (error) {
@@ -1031,25 +996,32 @@
                     // Log all available parameters
                     try {
                         const coreModel = currentModel.internalModel.coreModel;
-                        const paramCount = coreModel.getParameterCount();
-                        console.log(`Total parameters: ${paramCount}`);
                         
-                        // List all parameters that might be mouth-related
+                        // Different API for Cubism 4
+                        const parameters = coreModel.parameters;
+                        console.log(`Total parameters: ${parameters.count}`);
+                        
+                        // List all parameters
                         const allParams = [];
-                        for (let i = 0; i < paramCount; i++) {
-                            const paramId = coreModel.getParameterId(i);
+                        const mouthParams = [];
+                        
+                        for (let i = 0; i < parameters.count; i++) {
+                            const paramId = parameters.ids[i];
+                            const value = parameters.values[i];
+                            const min = parameters.minimumValues[i];
+                            const max = parameters.maximumValues[i];
+                            
                             allParams.push(paramId);
                             
                             // Log mouth-related parameters
                             if (paramId.toLowerCase().includes('mouth') || 
                                 paramId.toLowerCase().includes('lip')) {
-                                const value = coreModel.getParameterValueById(i);
-                                const min = coreModel.getParameterMinimumValue(i);
-                                const max = coreModel.getParameterMaximumValue(i);
-                                console.log(`  🗣️  ${paramId}: ${value} (range: ${min} to ${max})`);
+                                console.log(`  🗣️  ${paramId}: ${value.toFixed(3)} (range: ${min} to ${max})`);
+                                mouthParams.push(paramId);
                             }
                         }
                         
+                        console.log('Mouth-related parameters:', mouthParams.length > 0 ? mouthParams.join(', ') : 'NONE FOUND!');
                         console.log('All parameters:', allParams.join(', '));
                     } catch (e) {
                         console.error('Error reading parameters:', e);
@@ -1166,9 +1138,15 @@
                 // Find original character config
                 const originalChar = CHARACTERS.find(c => c.id === currentCharacter.id);
                 if (originalChar) {
-                    scaleSlider.value = originalChar.scale;
-                    xSlider.value = originalChar.position.x;
-                    ySlider.value = originalChar.position.y;
+                    const isMobile = window.innerWidth < 768;
+                    
+                    // Reset to mobile or desktop values appropriately
+                    const scale = (isMobile && originalChar.scaleMobile !== undefined) ? originalChar.scaleMobile : originalChar.scale;
+                    const position = (isMobile && originalChar.positionMobile) ? originalChar.positionMobile : originalChar.position;
+                    
+                    scaleSlider.value = scale;
+                    xSlider.value = position.x;
+                    ySlider.value = position.y;
                     updateModel();
                 }
             });
@@ -1201,9 +1179,16 @@
             
             // Update sliders when character changes
             function updateSliders(character) {
-                scaleSlider.value = character.scale;
-                xSlider.value = character.position.x;
-                ySlider.value = character.position.y;
+                const isMobile = window.innerWidth < 768;
+                
+                // Use mobile values if available and on mobile, otherwise use desktop values
+                const scale = (isMobile && character.scaleMobile !== undefined) ? character.scaleMobile : character.scale;
+                const position = (isMobile && character.positionMobile) ? character.positionMobile : character.position;
+                
+                scaleSlider.value = scale;
+                xSlider.value = position.x;
+                ySlider.value = position.y;
+                
                 updateModel();
             }
 

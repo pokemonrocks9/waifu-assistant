@@ -908,17 +908,16 @@
                 // Smooth mouth movement
                 lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * lipSyncState.smoothingFactor;
 
-                // Use the Cubism SDK's addParameterValueById method
-                if (internalModel.coreModel && typeof internalModel.coreModel.addParameterValueById === 'function') {
-                    // This is the correct Cubism 4 SDK method
-                    internalModel.coreModel.addParameterValueById('ParamMouthOpenY', lipSyncState.currentMouthOpen, 0.8);
+                // Use setParameterValueById to set absolute value (not additive)
+                if (internalModel.coreModel && typeof internalModel.coreModel.setParameterValueById === 'function') {
+                    internalModel.coreModel.setParameterValueById('ParamMouthOpenY', lipSyncState.currentMouthOpen);
                     
                     if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
-                        console.log('💬 Lip sync active via addParameterValueById:', lipSyncState.currentMouthOpen.toFixed(3));
+                        console.log('💬 Lip sync active via setParameterValueById:', lipSyncState.currentMouthOpen.toFixed(3));
                         lipSyncState.debugLogged = true;
                     }
                 } else {
-                    console.warn('addParameterValueById not available');
+                    console.warn('setParameterValueById not available');
                 }
                 
                 if (!lipSyncState.isSpeaking) {

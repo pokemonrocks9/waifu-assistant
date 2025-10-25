@@ -586,8 +586,8 @@
                 name: 'Compa',
                 description: 'Hyperdimension Neptunia',
                 modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
-                scale: 0.13,           // Desktop base scale
-                scaleMobile: 0.36,     // Mobile scale (exact value)
+                scale: 0.30,
+                scaleMobile: 0.30,
                 position: { x: 0.02, y: 0.24 },
                 positionMobile: { x: 0.16, y: 0.24 },
                 isCustom: true
@@ -880,8 +880,16 @@
         }
 
         function updateLipSync(model) {
+            if (!model || !model.internalModel || !model.internalModel.coreModel) return;
+            
             try {
                 const coreModel = model.internalModel.coreModel;
+                
+                // Check if parameters exist
+                if (!coreModel.parameters) {
+                    return;
+                }
+                
                 const parameters = coreModel.parameters;
                 
                 // Animate mouth open/close during speaking

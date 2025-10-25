@@ -479,14 +479,14 @@
         const CHARACTERS = [
             // ========== YOUR CUSTOM MODELS ==========
             {
-    id: 'compa',
-    name: 'Compa',
-    description: 'Hyperdimension Neptunia',
-    modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
-    scale: 0.13,
-    position: { x: 0.00, y: 0.24 },
-    isCustom: true
-},
+                id: 'compa',
+                name: 'Compa',
+                description: 'Hyperdimension Neptunia',
+                modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
+                scale: 0.13,
+                position: { x: 0.02, y: 0.24 },
+                isCustom: true
+            },
             
             // Add more Neptunia characters here:
             /*
@@ -953,7 +953,7 @@
     id: '${currentCharacter.id}',
     name: '${currentCharacter.name}',
     description: '${currentCharacter.description}',
-    modelUrl: CUSTOM_MODELS_PATH + '${currentCharacter.id}/${currentCharacter.id}.model3.json',
+    modelUrl: CUSTOM_MODELS_PATH + '${currentCharacter.modelUrl.replace(CUSTOM_MODELS_PATH, '')}',
     scale: ${parseFloat(scaleSlider.value).toFixed(2)},
     position: { x: ${parseFloat(xSlider.value).toFixed(2)}, y: ${parseFloat(ySlider.value).toFixed(2)} },
     isCustom: ${currentCharacter.isCustom}

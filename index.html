@@ -312,7 +312,7 @@
 
     <script>
         // Configuration
-        const BACKEND_URL = 'https://waifuassistant.duckdns.org';
+        const BACKEND_URL = 'https://waifubackend.pokymedia.xyz';
         
         // Path to your custom models folder (relative to this HTML file)
         // Put your Neptunia models in: /models/neptunia-character-name/
@@ -321,47 +321,28 @@
         // Available Live2D characters
         const CHARACTERS = [
             // ========== YOUR CUSTOM MODELS ==========
-            // Uncomment and configure these for your Neptunia models:
+            {
+                id: 'compa',
+                name: 'Compa',
+                description: 'Hyperdimension Neptunia',
+                modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
+                scale: 0.12,
+                position: { x: 0, y: 0.1 },
+                isCustom: true
+            },
+            
+            // Add more Neptunia characters here:
             /*
             {
                 id: 'neptune',
                 name: 'Neptune',
                 description: 'Neptunia - Purple Heart',
-                modelUrl: CUSTOM_MODELS_PATH + 'neptune/neptune.model3.json',  // or .model.json for v2
-                scale: 0.1,
-                position: { x: 0, y: 0.1 },
-                isCustom: true
-            },
-            {
-                id: 'noire',
-                name: 'Noire',
-                description: 'Neptunia - Black Heart',
-                modelUrl: CUSTOM_MODELS_PATH + 'noire/noire.model3.json',
+                modelUrl: CUSTOM_MODELS_PATH + 'neptune/neptune.model3.json',
                 scale: 0.1,
                 position: { x: 0, y: 0.1 },
                 isCustom: true
             },
             */
-            
-            // ========== BUILT-IN EXAMPLES (CDN) ==========
-            {
-                id: 'hiyori',
-                name: 'Hiyori (Example)',
-                description: 'Sample Live2D character',
-                modelUrl: 'https://cdn.jsdelivr.net/gh/Eikanya/Live2d-model/Live2D/Senko_Normals/senko.model.json',
-                scale: 0.15,
-                position: { x: 0, y: 0.1 },
-                isCustom: false
-            },
-            {
-                id: 'shizuku',
-                name: 'Tororo (Example)',
-                description: 'Another sample character',
-                modelUrl: 'https://cdn.jsdelivr.net/gh/Eikanya/Live2d-model/Live2D/Tororo/tororo.model.json',
-                scale: 0.15,
-                position: { x: 0, y: 0.1 },
-                isCustom: false
-            }
         ];
 
         // Global state
@@ -674,8 +655,14 @@
             });
 
             // Desktop: Toggle menu with button
-            toggleBtn.addEventListener('click', () => {
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent this from triggering the close handler
                 characterMenu.classList.toggle('open');
+            });
+
+            // Prevent menu clicks from closing the menu
+            characterMenu.addEventListener('click', (e) => {
+                e.stopPropagation();
             });
 
             // Mobile: Swipe from right edge to open menu
@@ -710,9 +697,9 @@
                 isSwiping = false;
             });
 
-            // Close menu when clicking outside
+            // Close menu when clicking outside (desktop)
             document.addEventListener('click', (e) => {
-                if (!characterMenu.contains(e.target) && e.target !== toggleBtn) {
+                if (characterMenu.classList.contains('open')) {
                     characterMenu.classList.remove('open');
                 }
             });
@@ -720,6 +707,7 @@
             // Close menu when tapping outside on mobile
             document.addEventListener('touchstart', (e) => {
                 if (!characterMenu.contains(e.target) && characterMenu.classList.contains('open')) {
+                    e.stopPropagation();
                     characterMenu.classList.remove('open');
                 }
             });

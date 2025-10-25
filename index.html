@@ -187,6 +187,108 @@
             text-align: center;
         }
 
+        /* Live editing controls */
+        #edit-controls {
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(0, 212, 255, 0.5);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        #edit-controls h3 {
+            color: #00d4ff;
+            font-size: 16px;
+            margin: 0 0 10px 0;
+        }
+
+        .control-group {
+            margin-bottom: 12px;
+        }
+
+        .control-group label {
+            display: block;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .control-row input[type="range"] {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00d4ff;
+            cursor: pointer;
+        }
+
+        .control-row input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00d4ff;
+            cursor: pointer;
+            border: none;
+        }
+
+        .control-row span {
+            color: #00d4ff;
+            font-size: 12px;
+            min-width: 50px;
+            text-align: right;
+            font-family: monospace;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .control-buttons button {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-reset {
+            background: rgba(255, 100, 100, 0.8);
+            color: white;
+        }
+
+        .btn-reset:hover {
+            background: rgba(255, 100, 100, 1);
+        }
+
+        .btn-copy {
+            background: rgba(0, 212, 255, 0.8);
+            color: white;
+        }
+
+        .btn-copy:hover {
+            background: rgba(0, 212, 255, 1);
+        }
+
         .character-item {
             background: rgba(255, 255, 255, 0.1);
             border: 2px solid rgba(255, 255, 255, 0.2);
@@ -231,6 +333,24 @@
             font-size: 12px;
             z-index: 10;
             backdrop-filter: blur(10px);
+        }
+
+        /* Position/Scale display at bottom */
+        #position-display {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 8px 15px;
+            border-radius: 8px;
+            color: #00d4ff;
+            font-size: 11px;
+            font-family: monospace;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            display: none;
+            white-space: pre;
         }
 
         /* Test lip sync button */
@@ -287,10 +407,47 @@
     <!-- Character selection menu -->
     <div id="character-menu">
         <h2>Select Character</h2>
+        
+        <!-- Live editing controls -->
+        <div id="edit-controls">
+            <h3>🎨 Adjust Position & Scale</h3>
+            
+            <div class="control-group">
+                <label>Base Scale</label>
+                <div class="control-row">
+                    <input type="range" id="scale-slider" min="0.05" max="0.5" step="0.01" value="0.15">
+                    <span id="scale-value">0.15</span>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <label>Position X (Left ← → Right)</label>
+                <div class="control-row">
+                    <input type="range" id="x-slider" min="-0.3" max="0.3" step="0.01" value="0">
+                    <span id="x-value">0.00</span>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <label>Position Y (Up ↑ ↓ Down)</label>
+                <div class="control-row">
+                    <input type="range" id="y-slider" min="-0.3" max="0.3" step="0.01" value="0.1">
+                    <span id="y-value">0.10</span>
+                </div>
+            </div>
+            
+            <div class="control-buttons">
+                <button class="btn-reset" id="reset-btn">Reset</button>
+                <button class="btn-copy" id="copy-btn">Copy Config</button>
+            </div>
+        </div>
+        
         <div id="character-list">
             <!-- Characters will be populated here -->
         </div>
     </div>
+
+    <div id="position-display"></div>
 
     <!-- Temporary text input for testing -->
     <div id="text-input-container">
@@ -326,8 +483,8 @@
                 name: 'Compa',
                 description: 'Hyperdimension Neptunia',
                 modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
-                scale: 0.35,  // Base scale - will be multiplied by screen size
-                position: { x: 0, y: 0 },
+                scale: 0.15,  // Base scale - will be multiplied by screen size
+                position: { x: 0, y: 0.1 },
                 isCustom: true
             },
             
@@ -731,6 +888,96 @@
             const characterList = document.getElementById('character-list');
             const characterMenu = document.getElementById('character-menu');
             const toggleBtn = document.getElementById('character-toggle');
+            
+            // Live editing controls
+            const scaleSlider = document.getElementById('scale-slider');
+            const xSlider = document.getElementById('x-slider');
+            const ySlider = document.getElementById('y-slider');
+            const scaleValue = document.getElementById('scale-value');
+            const xValue = document.getElementById('x-value');
+            const yValue = document.getElementById('y-value');
+            const resetBtn = document.getElementById('reset-btn');
+            const copyBtn = document.getElementById('copy-btn');
+            const positionDisplay = document.getElementById('position-display');
+
+            // Update display values and model in real-time
+            function updateModel() {
+                if (!currentModel || !currentCharacter) return;
+                
+                const scale = parseFloat(scaleSlider.value);
+                const x = parseFloat(xSlider.value);
+                const y = parseFloat(ySlider.value);
+                
+                // Update displayed values
+                scaleValue.textContent = scale.toFixed(2);
+                xValue.textContent = x.toFixed(2);
+                yValue.textContent = y.toFixed(2);
+                
+                // Update character config temporarily
+                currentCharacter.scale = scale;
+                currentCharacter.position.x = x;
+                currentCharacter.position.y = y;
+                
+                // Reposition model
+                positionModel(currentModel, currentCharacter);
+                
+                // Show position display at bottom
+                positionDisplay.style.display = 'block';
+                positionDisplay.textContent = `scale: ${scale.toFixed(2)}  |  x: ${x.toFixed(2)}  |  y: ${y.toFixed(2)}`;
+            }
+            
+            // Attach listeners
+            scaleSlider.addEventListener('input', updateModel);
+            xSlider.addEventListener('input', updateModel);
+            ySlider.addEventListener('input', updateModel);
+            
+            // Reset to original character values
+            resetBtn.addEventListener('click', () => {
+                if (!currentCharacter) return;
+                
+                // Find original character config
+                const originalChar = CHARACTERS.find(c => c.id === currentCharacter.id);
+                if (originalChar) {
+                    scaleSlider.value = originalChar.scale;
+                    xSlider.value = originalChar.position.x;
+                    ySlider.value = originalChar.position.y;
+                    updateModel();
+                }
+            });
+            
+            // Copy config to clipboard
+            copyBtn.addEventListener('click', () => {
+                if (!currentCharacter) return;
+                
+                const config = `{
+    id: '${currentCharacter.id}',
+    name: '${currentCharacter.name}',
+    description: '${currentCharacter.description}',
+    modelUrl: CUSTOM_MODELS_PATH + '${currentCharacter.id}/${currentCharacter.id}.model3.json',
+    scale: ${parseFloat(scaleSlider.value).toFixed(2)},
+    position: { x: ${parseFloat(xSlider.value).toFixed(2)}, y: ${parseFloat(ySlider.value).toFixed(2)} },
+    isCustom: ${currentCharacter.isCustom}
+}`;
+                
+                navigator.clipboard.writeText(config).then(() => {
+                    copyBtn.textContent = '✓ Copied!';
+                    setTimeout(() => {
+                        copyBtn.textContent = 'Copy Config';
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                    alert('Copy failed. See console for config.');
+                    console.log(config);
+                });
+            });
+            
+            // Update sliders when character changes
+            function updateSliders(character) {
+                scaleSlider.value = character.scale;
+                xSlider.value = character.position.x;
+                ySlider.value = character.position.y;
+                updateModel();
+            }
 
             // Populate character list
             CHARACTERS.forEach((char, index) => {
@@ -749,7 +996,9 @@
                     item.classList.add('active');
                     
                     // Load character
-                    loadLive2DModel(char);
+                    loadLive2DModel(char).then(() => {
+                        updateSliders(char);
+                    });
                     
                     // Close menu
                     characterMenu.classList.remove('open');
@@ -757,6 +1006,11 @@
                 
                 characterList.appendChild(item);
             });
+            
+            // Initialize sliders with first character
+            if (CHARACTERS.length > 0) {
+                updateSliders(CHARACTERS[0]);
+            }
 
             // Desktop: Toggle menu with button
             toggleBtn.addEventListener('click', (e) => {
@@ -805,6 +1059,7 @@
             document.addEventListener('click', (e) => {
                 if (characterMenu.classList.contains('open')) {
                     characterMenu.classList.remove('open');
+                    positionDisplay.style.display = 'none';
                 }
             });
 
@@ -813,6 +1068,7 @@
                 if (!characterMenu.contains(e.target) && characterMenu.classList.contains('open')) {
                     e.stopPropagation();
                     characterMenu.classList.remove('open');
+                    positionDisplay.style.display = 'none';
                 }
             });
         }

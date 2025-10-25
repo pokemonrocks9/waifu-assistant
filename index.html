@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#1a1a2e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎭</text></svg>">
     <title>AI Assistant Pod - Live2D</title>
     <style>
         * {
@@ -300,6 +301,12 @@
     <!-- Load PIXI.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
     
+    <!-- Load Cubism 2 runtime (for older Live2D models) -->
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+    
+    <!-- Load Cubism 4 runtime (for newer Live2D models) -->
+    <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+    
     <!-- Load pixi-live2d-display -->
     <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
 
@@ -381,6 +388,13 @@
         // Initialize PIXI Application
         function initPixi() {
             const canvas = document.getElementById('live2d-canvas');
+            
+            // Check if Live2D runtimes are loaded
+            console.log('Checking Live2D runtimes...');
+            console.log('PIXI:', typeof PIXI !== 'undefined' ? '✅' : '❌');
+            console.log('PIXI.live2d:', typeof PIXI.live2d !== 'undefined' ? '✅' : '❌');
+            console.log('Live2DCubismCore:', typeof Live2DCubismCore !== 'undefined' ? '✅ (Cubism 4)' : '❌');
+            console.log('Live2D:', typeof Live2D !== 'undefined' ? '✅ (Cubism 2)' : '❌');
             
             app = new PIXI.Application({
                 view: canvas,

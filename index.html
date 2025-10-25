@@ -425,6 +425,7 @@
 
             try {
                 console.log(`Loading Live2D model: ${character.name}`);
+                console.log(`Model URL: ${character.modelUrl}`);
                 
                 // Remove previous model if exists
                 if (currentModel) {
@@ -432,9 +433,59 @@
                     currentModel.destroy();
                 }
 
-                // Load the Live2D model
+                // For custom models, try to pre-fetch and clean the JSON
+                if (character.isCustom) {
+                    try {
+                        const response = await fetch(character.modelUrl);
+                        const text = await response.text();
+                        
+                        // Remove BOM if present
+                        const cleanText = text.replace(/^\uFEFF/, '');
+                        
+                        // Try to parse it
+                        const json = JSON.parse(cleanText);
+                        console.log('Model JSON parsed successfully:', json);
+                        
+                        // Create a blob URL with clean JSON
+                        const blob = new Blob([cleanText], { type: 'application/json' });
+                        const blobUrl = URL.createObjectURL(blob);
+                        
+                        // Load from blob URL
+                        const model = await PIXI.live2d.Live2DModel.from(blobUrl, {
+                            autoInteract: false
+                        });
+                        
+                        URL.revokeObjectURL(blobUrl);
+                        
+                        currentModel = model;
+                        currentCharacter = character;
+
+                        // Position and scale the model
+                        positionModel(model, character);
+
+                        // Add to stage
+                        app.stage.addChild(model);
+
+                        // Setup model parameters
+                        setupModelBehaviors(model);
+
+                        // Update status
+                        statusDiv.textContent = `Model: ${character.name}`;
+                        loadingDiv.style.display = 'none';
+
+                        console.log('Live2D model loaded successfully!');
+                        console.log('Available motions:', model.internalModel.motionManager.definitions);
+                        console.log('Available expressions:', Object.keys(model.internalModel.motionManager.expressionManager?.definitions || {}));
+                        
+                        return;
+                    } catch (fetchError) {
+                        console.warn('Pre-fetch failed, trying direct load:', fetchError);
+                    }
+                }
+
+                // Standard loading (for CDN models or if pre-fetch fails)
                 const model = await PIXI.live2d.Live2DModel.from(character.modelUrl, {
-                    autoInteract: false // We'll handle interactions manually
+                    autoInteract: false
                 });
 
                 currentModel = model;
@@ -461,7 +512,15 @@
                 console.error('Error loading Live2D model:', error);
                 loadingDiv.style.display = 'none';
                 errorDiv.style.display = 'block';
-                errorDiv.textContent = `Failed to load model: ${error.message}`;
+                errorDiv.innerHTML = `
+                    <div>Failed to load model: ${character.name}</div>
+                    <div style="font-size: 12px; margin-top: 10px; color: #ffaa00;">
+                        ${error.message}
+                    </div>
+                    <div style="font-size: 11px; margin-top: 5px; color: #888;">
+                        Check console for details
+                    </div>
+                `;
             }
         }
 

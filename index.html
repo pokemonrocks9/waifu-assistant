@@ -587,7 +587,13 @@
                 description: 'Hyperdimension Neptunia',
                 modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
                 scale: 0.13,
+                scaleMultipliers: {
+                    mobile: 2.77,  // 0.36 / 0.13 = 2.77x for mobile
+                    tablet: 1.0,
+                    desktop: 1.0
+                },
                 position: { x: 0.02, y: 0.24 },
+                positionMobile: { x: 0.16, y: 0.24 }, // Different x for mobile
                 isCustom: true
             },
             
@@ -801,24 +807,23 @@
             const screenWidth = window.innerWidth;
             const screenHeight = window.innerHeight;
             
-            // Determine scale multiplier based on screen size
+            // Determine device type and scale multiplier
             let scaleMultiplier = 1.0;
+            let isMobile = false;
             
-            if (screenWidth < 480) {
-                // Small mobile phones
-                scaleMultiplier = 1.5;
-            } else if (screenWidth < 768) {
-                // Large phones / small tablets
-                scaleMultiplier = 1.5;
+            if (screenWidth < 768) {
+                // Mobile (phones)
+                isMobile = true;
+                scaleMultiplier = character.scaleMultipliers?.mobile || 0.8;
             } else if (screenWidth < 1024) {
                 // Tablets
-                scaleMultiplier = 1.5;
+                scaleMultiplier = character.scaleMultipliers?.tablet || 1.2;
             } else if (screenWidth < 1920) {
                 // Desktop / laptop
-                scaleMultiplier = 1.5;
+                scaleMultiplier = character.scaleMultipliers?.desktop || 1.5;
             } else {
                 // Large desktop / 4K
-                scaleMultiplier = 2.0;
+                scaleMultiplier = character.scaleMultipliers?.desktop || 2.0;
             }
             
             // Also factor in height for very tall/short screens
@@ -834,12 +839,15 @@
             // Calculate final scale maintaining aspect ratio
             const finalScale = baseScale * scaleMultiplier;
             
-            console.log(`Screen: ${screenWidth}x${screenHeight}, Scale: ${baseScale} → ${finalScale.toFixed(3)} (${scaleMultiplier}x)`);
+            console.log(`Screen: ${screenWidth}x${screenHeight}, Device: ${isMobile ? 'Mobile' : 'Desktop'}, Scale: ${baseScale} → ${finalScale.toFixed(3)} (${scaleMultiplier}x)`);
+            
+            // Use mobile-specific position if available and on mobile
+            const position = (isMobile && character.positionMobile) ? character.positionMobile : character.position;
             
             // Position on screen
             model.position.set(
-                window.innerWidth * (0.5 + character.position.x),
-                window.innerHeight * (0.5 + character.position.y)
+                window.innerWidth * (0.5 + position.x),
+                window.innerHeight * (0.5 + position.y)
             );
             
             // Apply uniform scale (no stretching)
@@ -1013,8 +1021,43 @@
             const testBtn = document.getElementById('test-lipsync');
             if (testBtn) {
                 testBtn.addEventListener('click', () => {
-                    console.log('Testing lip sync for 3 seconds...');
-                    startLipSync(3000); // 3 second test
+                    console.log('=== Testing Lip Sync ===');
+                    
+                    if (!currentModel) {
+                        console.error('No model loaded!');
+                        return;
+                    }
+                    
+                    // Log all available parameters
+                    try {
+                        const coreModel = currentModel.internalModel.coreModel;
+                        const paramCount = coreModel.getParameterCount();
+                        console.log(`Total parameters: ${paramCount}`);
+                        
+                        // List all parameters that might be mouth-related
+                        const allParams = [];
+                        for (let i = 0; i < paramCount; i++) {
+                            const paramId = coreModel.getParameterId(i);
+                            allParams.push(paramId);
+                            
+                            // Log mouth-related parameters
+                            if (paramId.toLowerCase().includes('mouth') || 
+                                paramId.toLowerCase().includes('lip')) {
+                                const value = coreModel.getParameterValueById(i);
+                                const min = coreModel.getParameterMinimumValue(i);
+                                const max = coreModel.getParameterMaximumValue(i);
+                                console.log(`  🗣️  ${paramId}: ${value} (range: ${min} to ${max})`);
+                            }
+                        }
+                        
+                        console.log('All parameters:', allParams.join(', '));
+                    } catch (e) {
+                        console.error('Error reading parameters:', e);
+                    }
+                    
+                    // Trigger 3 second lip sync test
+                    console.log('Starting 3 second lip sync test...');
+                    startLipSync(3000);
                 });
             }
         }

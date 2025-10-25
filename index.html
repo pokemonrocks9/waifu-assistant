@@ -436,8 +436,13 @@
                 // For custom models, try to pre-fetch and clean the JSON
                 if (character.isCustom) {
                     try {
+                        console.log('Fetching model JSON...');
                         const response = await fetch(character.modelUrl);
                         const text = await response.text();
+                        
+                        console.log('Raw JSON length:', text.length);
+                        console.log('First 200 chars:', text.substring(0, 200));
+                        console.log('Last 200 chars:', text.substring(text.length - 200));
                         
                         // Remove BOM if present
                         const cleanText = text.replace(/^\uFEFF/, '');
@@ -479,7 +484,8 @@
                         
                         return;
                     } catch (fetchError) {
-                        console.warn('Pre-fetch failed, trying direct load:', fetchError);
+                        console.error('Pre-fetch failed, trying direct load:', fetchError);
+                        console.error('Error details:', fetchError.stack);
                     }
                 }
 

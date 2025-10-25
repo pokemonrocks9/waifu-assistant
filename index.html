@@ -883,7 +883,6 @@
             if (!model || !model.internalModel) return;
             
             try {
-                // Use the Cubism 4 SDK's built-in lip sync through motion manager
                 const internalModel = model.internalModel;
                 
                 // Animate mouth open/close during speaking
@@ -909,23 +908,39 @@
                 // Smooth mouth movement
                 lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * lipSyncState.smoothingFactor;
 
-                // Use the motion manager's setParameterValueById method
-                if (internalModel.motionManager && internalModel.coreModel) {
+                // Access core model directly and find ParamMouthOpenY
+                if (internalModel.coreModel) {
                     const coreModel = internalModel.coreModel;
                     
-                    // Set the ParamMouthOpenY value directly
-                    internalModel.motionManager.setParameterValueById('ParamMouthOpenY', lipSyncState.currentMouthOpen, 1.0);
-                    
-                    // Debug: Log once when speaking starts
-                    if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
-                        console.log('💬 Lip sync active, mouth value:', lipSyncState.currentMouthOpen.toFixed(3));
-                        console.log('Setting ParamMouthOpenY via motionManager');
-                        lipSyncState.debugLogged = true;
+                    // Try multiple access methods
+                    // Method 1: Direct _parameterValues array (Cubism 4 Core)
+                    if (coreModel._parameterValues && coreModel._parameterIds) {
+                        const paramIndex = coreModel._parameterIds.indexOf('ParamMouthOpenY');
+                        if (paramIndex >= 0) {
+                            coreModel._parameterValues[paramIndex] = lipSyncState.currentMouthOpen;
+                            
+                            if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
+                                console.log('💬 Lip sync active via _parameterValues:', lipSyncState.currentMouthOpen.toFixed(3));
+                                lipSyncState.debugLogged = true;
+                            }
+                        }
                     }
-                    
-                    if (!lipSyncState.isSpeaking) {
-                        lipSyncState.debugLogged = false;
+                    // Method 2: getParameterIndex/setParameterValueByIndex (older API)
+                    else if (typeof coreModel.getParameterIndex === 'function') {
+                        const paramIndex = coreModel.getParameterIndex('ParamMouthOpenY');
+                        if (paramIndex >= 0 && typeof coreModel.setParameterValueByIndex === 'function') {
+                            coreModel.setParameterValueByIndex(paramIndex, lipSyncState.currentMouthOpen);
+                            
+                            if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
+                                console.log('💬 Lip sync active via setParameterValueByIndex:', lipSyncState.currentMouthOpen.toFixed(3));
+                                lipSyncState.debugLogged = true;
+                            }
+                        }
                     }
+                }
+                
+                if (!lipSyncState.isSpeaking) {
+                    lipSyncState.debugLogged = false;
                 }
                 
             } catch (error) {

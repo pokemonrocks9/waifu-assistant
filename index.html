@@ -1003,7 +1003,18 @@
                     
                     // Log all available parameters
                     try {
+                        if (!currentModel.internalModel || !currentModel.internalModel.coreModel) {
+                            console.error('Model not fully initialized yet');
+                            return;
+                        }
+                        
                         const coreModel = currentModel.internalModel.coreModel;
+                        
+                        // Check if parameters exist
+                        if (!coreModel.parameters) {
+                            console.error('Parameters object not available');
+                            return;
+                        }
                         
                         // Different API for Cubism 4
                         const parameters = coreModel.parameters;
@@ -1117,10 +1128,25 @@
                 xValue.textContent = x.toFixed(2);
                 yValue.textContent = y.toFixed(2);
                 
+                // Check if we're on mobile
+                const isMobile = window.innerWidth < 768;
+                
                 // Update character config temporarily
-                currentCharacter.scale = scale;
-                currentCharacter.position.x = x;
-                currentCharacter.position.y = y;
+                if (isMobile && currentCharacter.scaleMobile !== undefined) {
+                    // Update mobile-specific values
+                    currentCharacter.scaleMobile = scale;
+                    if (currentCharacter.positionMobile) {
+                        currentCharacter.positionMobile.x = x;
+                        currentCharacter.positionMobile.y = y;
+                    } else {
+                        currentCharacter.positionMobile = { x, y };
+                    }
+                } else {
+                    // Update desktop values
+                    currentCharacter.scale = scale;
+                    currentCharacter.position.x = x;
+                    currentCharacter.position.y = y;
+                }
                 
                 // Reposition model
                 positionModel(currentModel, currentCharacter);

@@ -1,68 +1,1379 @@
-// Service Worker for AI Assistant Pod PWA
-const CACHE_NAME = 'ai-assistant-pod-v38';
-const urlsToCache = [
-  './',
-  './index.html',
-  './manifest.json'
-];
-
-// Install event - cache core files
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-      .then(() => self.skipWaiting())
-  );
-});
-
-// Fetch event - serve from cache, fallback to network
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Cache hit - return response
-        if (response) {
-          return response;
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎭</text></svg>">
+    <title>AI Assistant Pod - Live2D</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
-        // Clone the request
-        const fetchRequest = event.request.clone();
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
 
-        return fetch(fetchRequest).then((response) => {
-          // Check if valid response
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            touch-action: none;
+        }
 
-          // Clone the response
-          const responseToCache = response.clone();
+        #live2d-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
 
-          caches.open(CACHE_NAME)
-            .then((cache) => {
-              cache.put(event.request, responseToCache);
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 20px;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            border-top: 4px solid #00d4ff;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #ff6b6b;
+            font-size: 18px;
+            text-align: center;
+            z-index: 10;
+            display: none;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 10px;
+            max-width: 80%;
+        }
+
+        /* Text input for testing */
+        #text-input-container {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 600px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        #text-input {
+            flex: 1;
+            background: rgba(20, 20, 40, 0.95);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 25px;
+            padding: 15px 20px;
+            color: white;
+            font-size: 16px;
+            outline: none;
+            backdrop-filter: blur(10px);
+        }
+
+        #text-input:focus {
+            border-color: #00d4ff;
+        }
+
+        #speak-btn {
+            background: rgba(0, 212, 255, 0.8);
+            border: none;
+            border-radius: 25px;
+            padding: 15px 30px;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        #speak-btn:hover {
+            background: rgba(0, 212, 255, 1);
+            transform: scale(1.05);
+        }
+
+        #speak-btn.speaking {
+            background: rgba(255, 100, 100, 0.8);
+        }
+
+        /* Character selector - Desktop only */
+        #character-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 212, 255, 0.8);
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            z-index: 101;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s;
+        }
+
+        #character-toggle:hover {
+            background: rgba(0, 212, 255, 1);
+            transform: scale(1.1);
+        }
+
+        /* Hide toggle button on mobile - use swipe instead */
+        @media (max-width: 768px) {
+            #character-toggle {
+                display: none;
+            }
+        }
+
+        #character-menu {
+            position: fixed;
+            right: -320px;
+            top: 0;
+            width: 300px;
+            height: 100%;
+            background: rgba(20, 20, 40, 0.95);
+            backdrop-filter: blur(10px);
+            transition: right 0.3s ease;
+            z-index: 100;
+            overflow-y: auto;
+            padding: 20px;
+            box-shadow: -5px 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        #character-menu.open {
+            right: 0;
+        }
+
+        #character-menu h2 {
+            color: #00d4ff;
+            margin: 0 0 20px 0;
+            font-size: 24px;
+            text-align: center;
+        }
+
+        /* Live editing controls */
+        #edit-controls {
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(0, 212, 255, 0.5);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        #edit-controls h3 {
+            color: #00d4ff;
+            font-size: 16px;
+            margin: 0 0 10px 0;
+        }
+
+        .control-group {
+            margin-bottom: 12px;
+        }
+
+        .control-group label {
+            display: block;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .control-row input[type="range"] {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00d4ff;
+            cursor: pointer;
+        }
+
+        .control-row input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #00d4ff;
+            cursor: pointer;
+            border: none;
+        }
+
+        .control-row span {
+            color: #00d4ff;
+            font-size: 12px;
+            min-width: 50px;
+            text-align: right;
+            font-family: monospace;
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .control-buttons button {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-reset {
+            background: rgba(255, 100, 100, 0.8);
+            color: white;
+        }
+
+        .btn-reset:hover {
+            background: rgba(255, 100, 100, 1);
+        }
+
+        .btn-copy {
+            background: rgba(0, 212, 255, 0.8);
+            color: white;
+        }
+
+        .btn-copy:hover {
+            background: rgba(0, 212, 255, 1);
+        }
+
+        .character-item {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .character-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #00d4ff;
+            transform: translateX(-5px);
+        }
+
+        .character-item.active {
+            background: rgba(0, 212, 255, 0.3);
+            border-color: #00d4ff;
+        }
+
+        .character-name {
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .character-desc {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 12px;
+        }
+
+        #status-info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 10px;
+            color: white;
+            font-size: 12px;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+        }
+
+        /* Position/Scale display at bottom */
+        #position-display {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 8px 15px;
+            border-radius: 8px;
+            color: #00d4ff;
+            font-size: 11px;
+            font-family: monospace;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            display: none;
+            white-space: pre;
+        }
+
+        #position-display.always-visible {
+            display: block;
+        }
+
+        /* Settings toggle section */
+        .settings-section {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .settings-section h3 {
+            color: #00d4ff;
+            font-size: 14px;
+            margin: 0 0 10px 0;
+        }
+
+        .toggle-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .toggle-option label {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 12px;
+            flex: 1;
+        }
+
+        /* Toggle switch */
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
+            cursor: pointer;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #00d4ff;
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+
+        /* Hide edit controls when toggled off */
+        #edit-controls.hidden {
+            display: none;
+        }
+
+        /* Test lip sync button */
+        #test-lipsync {
+            position: fixed;
+            top: 80px;
+            left: 20px;
+            background: rgba(255, 100, 100, 0.7);
+            border: none;
+            border-radius: 10px;
+            padding: 10px 15px;
+            color: white;
+            font-size: 12px;
+            cursor: pointer;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s;
+        }
+
+        #test-lipsync:hover {
+            background: rgba(255, 100, 100, 0.9);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            #test-lipsync {
+                display: none; /* Hide on mobile */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="live2d-canvas"></canvas>
+    </div>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <div>Loading Live2D model...</div>
+    </div>
+
+    <div id="error"></div>
+
+    <div id="status-info">
+        <div>🎭 Live2D System</div>
+        <div id="model-status">No model loaded</div>
+    </div>
+
+    <button id="test-lipsync">🗣️ Test Lip Sync</button>
+
+    <!-- Character selector toggle button -->
+    <button id="character-toggle">👤</button>
+
+    <!-- Character selection menu -->
+    <div id="character-menu">
+        <h2>Select Character</h2>
+        
+        <!-- Settings Section -->
+        <div class="settings-section">
+            <h3>⚙️ Settings</h3>
+            
+            <div class="toggle-option">
+                <label>Show Position Controls</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-edit-controls" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            
+            <div class="toggle-option">
+                <label>Always Show Position Display</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-position-display">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+        
+        <!-- Live editing controls -->
+        <div id="edit-controls">
+            <h3>🎨 Adjust Position & Scale</h3>
+            
+            <div class="control-group">
+                <label>Base Scale</label>
+                <div class="control-row">
+                    <input type="range" id="scale-slider" min="0.05" max="0.5" step="0.01" value="0.15">
+                    <span id="scale-value">0.15</span>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <label>Position X (Left ← → Right)</label>
+                <div class="control-row">
+                    <input type="range" id="x-slider" min="-0.3" max="0.3" step="0.01" value="0">
+                    <span id="x-value">0.00</span>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <label>Position Y (Up ↑ ↓ Down)</label>
+                <div class="control-row">
+                    <input type="range" id="y-slider" min="-0.3" max="0.3" step="0.01" value="0.1">
+                    <span id="y-value">0.10</span>
+                </div>
+            </div>
+            
+            <div class="control-buttons">
+                <button class="btn-reset" id="reset-btn">Reset</button>
+                <button class="btn-copy" id="copy-btn">Copy Config</button>
+            </div>
+        </div>
+        
+        <div id="character-list">
+            <!-- Characters will be populated here -->
+        </div>
+    </div>
+
+    <div id="position-display"></div>
+
+    <!-- Temporary text input for testing -->
+    <div id="text-input-container">
+        <input type="text" id="text-input" placeholder="Type a message to test lip-sync...">
+        <button id="speak-btn">Send</button>
+    </div>
+
+    <!-- Load PIXI.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    
+    <!-- Load Cubism 2 runtime (for older Live2D models) -->
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+    
+    <!-- Load Cubism 4 runtime (for newer Live2D models) -->
+    <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+    
+    <!-- Load pixi-live2d-display -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
+
+    <script>
+        // Configuration
+        const BACKEND_URL = 'https://waifubackend.pokymedia.xyz';
+        
+        // Path to your custom models folder (relative to this HTML file)
+        // Put your Neptunia models in: /models/neptunia-character-name/
+        const CUSTOM_MODELS_PATH = './models/';
+        
+        // Available Live2D characters
+        const CHARACTERS = [
+            // ========== YOUR CUSTOM MODELS ==========
+            {
+                id: 'compa',
+                name: 'Compa',
+                description: 'Hyperdimension Neptunia',
+                modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
+                scale: 0.13,
+                position: { x: 0.02, y: 0.24 },
+                isCustom: true
+            },
+            
+            // Add more Neptunia characters here:
+            /*
+            {
+                id: 'neptune',
+                name: 'Neptune',
+                description: 'Neptunia - Purple Heart',
+                modelUrl: CUSTOM_MODELS_PATH + 'neptune/neptune.model3.json',
+                scale: 0.1,
+                position: { x: 0, y: 0.1 },
+                isCustom: true
+            },
+            */
+        ];
+
+        // Global state
+        let app;
+        let currentModel = null;
+        let currentCharacter = null;
+        let ws = null;
+        let isConnected = false;
+
+        // Lip sync state
+        let lipSyncState = {
+            isSpeaking: false,
+            targetMouthOpen: 0,
+            currentMouthOpen: 0,
+            smoothingFactor: 0.3,
+            speakingStartTime: 0,
+            speakingDuration: 0,
+            debugLogged: false,
+            errorLogged: false
+        };
+
+        // Mouse tracking
+        let mouseX = 0;
+        let mouseY = 0;
+
+        // Initialize PIXI Application
+        function initPixi() {
+            const canvas = document.getElementById('live2d-canvas');
+            
+            // Check if Live2D runtimes are loaded
+            console.log('Checking Live2D runtimes...');
+            console.log('PIXI:', typeof PIXI !== 'undefined' ? '✅' : '❌');
+            console.log('PIXI.live2d:', typeof PIXI.live2d !== 'undefined' ? '✅' : '❌');
+            console.log('Live2DCubismCore:', typeof Live2DCubismCore !== 'undefined' ? '✅ (Cubism 4)' : '❌');
+            console.log('Live2D:', typeof Live2D !== 'undefined' ? '✅ (Cubism 2)' : '❌');
+            
+            app = new PIXI.Application({
+                view: canvas,
+                width: window.innerWidth,
+                height: window.innerHeight,
+                backgroundColor: 0x1a1a2e,
+                backgroundAlpha: 0,
+                antialias: true,
+                resolution: window.devicePixelRatio || 1,
+                autoDensity: true
             });
 
-          return response;
-        });
-      })
-  );
-});
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                app.renderer.resize(window.innerWidth, window.innerHeight);
+                if (currentModel) {
+                    positionModel(currentModel, currentCharacter);
+                }
+            });
 
-// Activate event - clean up old caches
-self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
-  event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
-  );
-});
+            // Mouse tracking for gaze
+            window.addEventListener('mousemove', (event) => {
+                mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+                mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+            });
+
+            // Touch tracking for mobile
+            window.addEventListener('touchmove', (event) => {
+                if (event.touches.length > 0) {
+                    const touch = event.touches[0];
+                    mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
+                    mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
+                }
+            });
+
+            console.log('PIXI initialized');
+        }
+
+        // Load Live2D model
+        async function loadLive2DModel(character) {
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const statusDiv = document.getElementById('model-status');
+
+            loadingDiv.style.display = 'block';
+            errorDiv.style.display = 'none';
+
+            try {
+                console.log(`Loading Live2D model: ${character.name}`);
+                console.log(`Model URL: ${character.modelUrl}`);
+                
+                // Remove previous model if exists
+                if (currentModel) {
+                    app.stage.removeChild(currentModel);
+                    currentModel.destroy();
+                }
+
+                // For custom models, try to pre-fetch and clean the JSON
+                if (character.isCustom) {
+                    try {
+                        console.log('Fetching model JSON...');
+                        const response = await fetch(character.modelUrl);
+                        const text = await response.text();
+                        
+                        console.log('Raw JSON length:', text.length);
+                        console.log('First 200 chars:', text.substring(0, 200));
+                        console.log('Last 200 chars:', text.substring(text.length - 200));
+                        
+                        // Remove BOM if present
+                        const cleanText = text.replace(/^\uFEFF/, '');
+                        
+                        // Try to parse it
+                        const json = JSON.parse(cleanText);
+                        console.log('Model JSON parsed successfully:', json);
+                        
+                        // Create a blob URL with clean JSON
+                        const blob = new Blob([cleanText], { type: 'application/json' });
+                        const blobUrl = URL.createObjectURL(blob);
+                        
+                        // Load from blob URL
+                        const model = await PIXI.live2d.Live2DModel.from(blobUrl, {
+                            autoInteract: false
+                        });
+                        
+                        URL.revokeObjectURL(blobUrl);
+                        
+                        currentModel = model;
+                        currentCharacter = character;
+
+                        // Position and scale the model
+                        positionModel(model, character);
+
+                        // Add to stage
+                        app.stage.addChild(model);
+
+                        // Setup model parameters
+                        setupModelBehaviors(model);
+
+                        // Update status
+                        statusDiv.textContent = `Model: ${character.name}`;
+                        loadingDiv.style.display = 'none';
+
+                        console.log('Live2D model loaded successfully!');
+                        console.log('Available motions:', model.internalModel.motionManager.definitions);
+                        console.log('Available expressions:', Object.keys(model.internalModel.motionManager.expressionManager?.definitions || {}));
+                        
+                        return;
+                    } catch (fetchError) {
+                        console.error('Pre-fetch failed, trying direct load:', fetchError);
+                        console.error('Error details:', fetchError.stack);
+                    }
+                }
+
+                // Standard loading (for CDN models or if pre-fetch fails)
+                const model = await PIXI.live2d.Live2DModel.from(character.modelUrl, {
+                    autoInteract: false
+                });
+
+                currentModel = model;
+                currentCharacter = character;
+
+                // Position and scale the model
+                positionModel(model, character);
+
+                // Add to stage
+                app.stage.addChild(model);
+
+                // Setup model parameters
+                setupModelBehaviors(model);
+
+                // Update status
+                statusDiv.textContent = `Model: ${character.name}`;
+                loadingDiv.style.display = 'none';
+
+                console.log('Live2D model loaded successfully!');
+                console.log('Available motions:', model.internalModel.motionManager.definitions);
+                console.log('Available expressions:', Object.keys(model.internalModel.motionManager.expressionManager?.definitions || {}));
+
+            } catch (error) {
+                console.error('Error loading Live2D model:', error);
+                loadingDiv.style.display = 'none';
+                errorDiv.style.display = 'block';
+                errorDiv.innerHTML = `
+                    <div>Failed to load model: ${character.name}</div>
+                    <div style="font-size: 12px; margin-top: 10px; color: #ffaa00;">
+                        ${error.message}
+                    </div>
+                    <div style="font-size: 11px; margin-top: 5px; color: #888;">
+                        Check console for details
+                    </div>
+                `;
+            }
+        }
+
+        function positionModel(model, character) {
+            // Center the model
+            model.anchor.set(0.5, 0.5);
+            
+            // Calculate responsive scale based on screen size
+            const baseScale = character.scale;
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
+            
+            // Determine scale multiplier based on screen size
+            let scaleMultiplier = 1.0;
+            
+            if (screenWidth < 480) {
+                // Small mobile phones
+                scaleMultiplier = 0.8;
+            } else if (screenWidth < 768) {
+                // Large phones / small tablets
+                scaleMultiplier = 1.0;
+            } else if (screenWidth < 1024) {
+                // Tablets
+                scaleMultiplier = 1.2;
+            } else if (screenWidth < 1920) {
+                // Desktop / laptop
+                scaleMultiplier = 1.5;
+            } else {
+                // Large desktop / 4K
+                scaleMultiplier = 2.0;
+            }
+            
+            // Also factor in height for very tall/short screens
+            const aspectRatio = screenWidth / screenHeight;
+            if (aspectRatio < 0.6) {
+                // Very tall screen (narrow phone in portrait)
+                scaleMultiplier *= 0.9;
+            } else if (aspectRatio > 2) {
+                // Very wide screen (ultrawide monitor)
+                scaleMultiplier *= 1.2;
+            }
+            
+            // Calculate final scale maintaining aspect ratio
+            const finalScale = baseScale * scaleMultiplier;
+            
+            console.log(`Screen: ${screenWidth}x${screenHeight}, Scale: ${baseScale} → ${finalScale.toFixed(3)} (${scaleMultiplier}x)`);
+            
+            // Position on screen
+            model.position.set(
+                window.innerWidth * (0.5 + character.position.x),
+                window.innerHeight * (0.5 + character.position.y)
+            );
+            
+            // Apply uniform scale (no stretching)
+            model.scale.set(finalScale);
+        }
+
+        function setupModelBehaviors(model) {
+            // Enable automatic behaviors
+            model.on('hit', (hitAreas) => {
+                console.log('Hit areas:', hitAreas);
+                // You could trigger reactions here
+            });
+
+            // Animation loop for custom behaviors
+            app.ticker.add(() => {
+                if (!model) return;
+
+                // Update eye tracking (gaze follows cursor)
+                updateEyeTracking(model);
+
+                // Update lip sync
+                updateLipSync(model);
+
+                // Update breathing (Live2D models have this built-in, but we can enhance)
+                updateBreathing(model);
+            });
+        }
+
+        function updateEyeTracking(model) {
+            try {
+                const coreModel = model.internalModel.coreModel;
+                
+                // Common Live2D eye parameters
+                const eyeParams = [
+                    'ParamAngleX',
+                    'ParamAngleY',
+                    'ParamEyeBallX',
+                    'ParamEyeBallY'
+                ];
+
+                // Smooth eye movement
+                const eyeX = mouseX * 30; // Scale to appropriate range
+                const eyeY = mouseY * 30;
+
+                for (const param of eyeParams) {
+                    const index = coreModel.getParameterIndex(param);
+                    if (index >= 0) {
+                        const current = coreModel.getParameterValueById(index);
+                        let target = 0;
+                        
+                        if (param.includes('X')) target = eyeX;
+                        if (param.includes('Y')) target = eyeY;
+                        
+                        // Smooth interpolation
+                        const smoothed = current + (target - current) * 0.1;
+                        coreModel.setParameterValueById(index, smoothed);
+                    }
+                }
+            } catch (error) {
+                // Parameters might not exist, that's okay
+            }
+        }
+
+        function updateLipSync(model) {
+            try {
+                const coreModel = model.internalModel.coreModel;
+                
+                // Animate mouth open/close during speaking
+                if (lipSyncState.isSpeaking) {
+                    const elapsed = Date.now() - lipSyncState.speakingStartTime;
+                    const progress = Math.min(elapsed / lipSyncState.speakingDuration, 1);
+                    
+                    // Create more varied mouth movement (like talking)
+                    const baseOscillation = Math.sin(elapsed * 0.025) * 0.5 + 0.5; // Slower base
+                    const microOscillation = Math.sin(elapsed * 0.08) * 0.3; // Faster variation
+                    const combinedOscillation = (baseOscillation + microOscillation) / 1.3; // Combine both
+                    
+                    // Mouth opens more at the beginning/middle of speaking
+                    const intensityCurve = Math.sin(progress * Math.PI); // 0 -> 1 -> 0
+                    lipSyncState.targetMouthOpen = combinedOscillation * intensityCurve * 1.0;
+                    
+                    if (progress >= 1) {
+                        lipSyncState.isSpeaking = false;
+                        lipSyncState.targetMouthOpen = 0;
+                    }
+                }
+
+                // Smooth mouth movement
+                lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * lipSyncState.smoothingFactor;
+
+                // Apply to model - try multiple common parameter names
+                const mouthParams = [
+                    'ParamMouthOpenY',      // Cubism 3/4
+                    'PARAM_MOUTH_OPEN_Y',   // Cubism 2
+                    'ParamMouthOpen',       // Alternative
+                    'PARAM_MOUTH_OPEN',     // Alternative
+                    'Mouth',                // Simple name
+                    'MouthOpen',            // Another variant
+                    'MouthOpenY'            // Another variant
+                ];
+                
+                let appliedToParam = false;
+                for (const param of mouthParams) {
+                    const index = coreModel.getParameterIndex(param);
+                    if (index >= 0) {
+                        // Scale to appropriate range (usually 0 to 1)
+                        coreModel.setParameterValueById(index, lipSyncState.currentMouthOpen);
+                        appliedToParam = true;
+                    }
+                }
+                
+                // Debug: Log once when speaking starts
+                if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
+                    console.log('💬 Lip sync active, mouth value:', lipSyncState.currentMouthOpen.toFixed(3));
+                    console.log('Applied to parameter:', appliedToParam ? '✅' : '❌');
+                    if (!appliedToParam) {
+                        console.warn('No mouth parameter found! Available parameters:', 
+                            Array.from({length: coreModel.getParameterCount()}, (_, i) => 
+                                coreModel.getParameterId(i)
+                            ).join(', ')
+                        );
+                    }
+                    lipSyncState.debugLogged = true;
+                }
+                
+                if (!lipSyncState.isSpeaking) {
+                    lipSyncState.debugLogged = false;
+                }
+                
+            } catch (error) {
+                // Parameters might not exist
+                if (lipSyncState.isSpeaking && !lipSyncState.errorLogged) {
+                    console.error('Lip sync error:', error);
+                    lipSyncState.errorLogged = true;
+                }
+                if (!lipSyncState.isSpeaking) {
+                    lipSyncState.errorLogged = false;
+                }
+            }
+        }
+
+        function updateBreathing(model) {
+            try {
+                const coreModel = model.internalModel.coreModel;
+                const time = Date.now() * 0.001;
+                
+                // Gentle breathing motion (Live2D usually has this built-in, but we can enhance)
+                const breathValue = Math.sin(time * 2) * 0.5 + 0.5; // 0 to 1
+                
+                const breathParams = ['ParamBreath', 'PARAM_BREATH'];
+                for (const param of breathParams) {
+                    const index = coreModel.getParameterIndex(param);
+                    if (index >= 0) {
+                        coreModel.setParameterValueById(index, breathValue);
+                    }
+                }
+            } catch (error) {
+                // Parameters might not exist
+            }
+        }
+
+        function startLipSync(durationMs) {
+            lipSyncState.isSpeaking = true;
+            lipSyncState.speakingStartTime = Date.now();
+            lipSyncState.speakingDuration = durationMs;
+            console.log(`🗣️ Started lip sync for ${durationMs}ms (${(durationMs/1000).toFixed(2)}s)`);
+        }
+
+        // Test lip sync button
+        function initTestLipSync() {
+            const testBtn = document.getElementById('test-lipsync');
+            if (testBtn) {
+                testBtn.addEventListener('click', () => {
+                    console.log('Testing lip sync for 3 seconds...');
+                    startLipSync(3000); // 3 second test
+                });
+            }
+        }
+
+        // Character selection UI
+        function initCharacterSelector() {
+            const characterList = document.getElementById('character-list');
+            const characterMenu = document.getElementById('character-menu');
+            const toggleBtn = document.getElementById('character-toggle');
+            
+            // Settings toggles
+            const toggleEditControls = document.getElementById('toggle-edit-controls');
+            const togglePositionDisplay = document.getElementById('toggle-position-display');
+            const editControls = document.getElementById('edit-controls');
+            const positionDisplay = document.getElementById('position-display');
+            
+            // Live editing controls
+            const scaleSlider = document.getElementById('scale-slider');
+            const xSlider = document.getElementById('x-slider');
+            const ySlider = document.getElementById('y-slider');
+            const scaleValue = document.getElementById('scale-value');
+            const xValue = document.getElementById('x-value');
+            const yValue = document.getElementById('y-value');
+            const resetBtn = document.getElementById('reset-btn');
+            const copyBtn = document.getElementById('copy-btn');
+
+            // Load settings from localStorage
+            const showEditControls = localStorage.getItem('showEditControls') !== 'false'; // default true
+            const alwaysShowPosition = localStorage.getItem('alwaysShowPosition') === 'true'; // default false
+            
+            toggleEditControls.checked = showEditControls;
+            togglePositionDisplay.checked = alwaysShowPosition;
+            
+            if (!showEditControls) {
+                editControls.classList.add('hidden');
+            }
+            
+            if (alwaysShowPosition) {
+                positionDisplay.classList.add('always-visible');
+            }
+
+            // Handle edit controls toggle
+            toggleEditControls.addEventListener('change', () => {
+                const isChecked = toggleEditControls.checked;
+                localStorage.setItem('showEditControls', isChecked);
+                
+                if (isChecked) {
+                    editControls.classList.remove('hidden');
+                } else {
+                    editControls.classList.add('hidden');
+                }
+            });
+
+            // Handle position display toggle
+            togglePositionDisplay.addEventListener('change', () => {
+                const isChecked = togglePositionDisplay.checked;
+                localStorage.setItem('alwaysShowPosition', isChecked);
+                
+                if (isChecked) {
+                    positionDisplay.classList.add('always-visible');
+                    updateModel(); // Update to show current values
+                } else {
+                    positionDisplay.classList.remove('always-visible');
+                }
+            });
+
+            // Update display values and model in real-time
+            function updateModel() {
+                if (!currentModel || !currentCharacter) return;
+                
+                const scale = parseFloat(scaleSlider.value);
+                const x = parseFloat(xSlider.value);
+                const y = parseFloat(ySlider.value);
+                
+                // Update displayed values
+                scaleValue.textContent = scale.toFixed(2);
+                xValue.textContent = x.toFixed(2);
+                yValue.textContent = y.toFixed(2);
+                
+                // Update character config temporarily
+                currentCharacter.scale = scale;
+                currentCharacter.position.x = x;
+                currentCharacter.position.y = y;
+                
+                // Reposition model
+                positionModel(currentModel, currentCharacter);
+                
+                // Show position display
+                positionDisplay.textContent = `scale: ${scale.toFixed(2)}  |  x: ${x.toFixed(2)}  |  y: ${y.toFixed(2)}`;
+                
+                // Only show temporarily if not set to always visible
+                if (!togglePositionDisplay.checked) {
+                    positionDisplay.style.display = 'block';
+                }
+            }
+            
+            // Attach listeners
+            scaleSlider.addEventListener('input', updateModel);
+            xSlider.addEventListener('input', updateModel);
+            ySlider.addEventListener('input', updateModel);
+            
+            // Reset to original character values
+            resetBtn.addEventListener('click', () => {
+                if (!currentCharacter) return;
+                
+                // Find original character config
+                const originalChar = CHARACTERS.find(c => c.id === currentCharacter.id);
+                if (originalChar) {
+                    scaleSlider.value = originalChar.scale;
+                    xSlider.value = originalChar.position.x;
+                    ySlider.value = originalChar.position.y;
+                    updateModel();
+                }
+            });
+            
+            // Copy config to clipboard
+            copyBtn.addEventListener('click', () => {
+                if (!currentCharacter) return;
+                
+                const config = `{
+    id: '${currentCharacter.id}',
+    name: '${currentCharacter.name}',
+    description: '${currentCharacter.description}',
+    modelUrl: CUSTOM_MODELS_PATH + '${currentCharacter.modelUrl.replace(CUSTOM_MODELS_PATH, '')}',
+    scale: ${parseFloat(scaleSlider.value).toFixed(2)},
+    position: { x: ${parseFloat(xSlider.value).toFixed(2)}, y: ${parseFloat(ySlider.value).toFixed(2)} },
+    isCustom: ${currentCharacter.isCustom}
+}`;
+                
+                navigator.clipboard.writeText(config).then(() => {
+                    copyBtn.textContent = '✓ Copied!';
+                    setTimeout(() => {
+                        copyBtn.textContent = 'Copy Config';
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                    alert('Copy failed. See console for config.');
+                    console.log(config);
+                });
+            });
+            
+            // Update sliders when character changes
+            function updateSliders(character) {
+                scaleSlider.value = character.scale;
+                xSlider.value = character.position.x;
+                ySlider.value = character.position.y;
+                updateModel();
+            }
+
+            // Populate character list
+            CHARACTERS.forEach((char, index) => {
+                const item = document.createElement('div');
+                item.className = 'character-item';
+                if (index === 0) item.classList.add('active');
+                
+                item.innerHTML = `
+                    <div class="character-name">${char.name}</div>
+                    <div class="character-desc">${char.description}</div>
+                `;
+                
+                item.addEventListener('click', () => {
+                    // Update active state
+                    document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
+                    item.classList.add('active');
+                    
+                    // Load character
+                    loadLive2DModel(char).then(() => {
+                        updateSliders(char);
+                    });
+                    
+                    // Close menu
+                    characterMenu.classList.remove('open');
+                });
+                
+                characterList.appendChild(item);
+            });
+            
+            // Initialize sliders with first character
+            if (CHARACTERS.length > 0) {
+                updateSliders(CHARACTERS[0]);
+            }
+
+            // Desktop: Toggle menu with button
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent this from triggering the close handler
+                characterMenu.classList.toggle('open');
+            });
+
+            // Prevent menu clicks from closing the menu
+            characterMenu.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+
+            // Mobile: Swipe from right edge to open menu
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let isSwiping = false;
+
+            document.addEventListener('touchstart', (e) => {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                
+                // Detect if touch started from right edge (last 50px)
+                if (touchStartX > window.innerWidth - 50) {
+                    isSwiping = true;
+                }
+            });
+
+            document.addEventListener('touchmove', (e) => {
+                if (!isSwiping) return;
+                
+                const touchX = e.touches[0].clientX;
+                const deltaX = touchStartX - touchX;
+                
+                // Swiping left (deltaX positive) opens the menu
+                if (deltaX > 50) {
+                    characterMenu.classList.add('open');
+                    isSwiping = false;
+                }
+            });
+
+            document.addEventListener('touchend', () => {
+                isSwiping = false;
+            });
+
+            // Close menu when clicking outside (desktop)
+            document.addEventListener('click', (e) => {
+                if (characterMenu.classList.contains('open')) {
+                    characterMenu.classList.remove('open');
+                    // Only hide position display if not set to always visible
+                    if (!togglePositionDisplay.checked) {
+                        positionDisplay.style.display = 'none';
+                    }
+                }
+            });
+
+            // Close menu when tapping outside on mobile
+            document.addEventListener('touchstart', (e) => {
+                if (!characterMenu.contains(e.target) && characterMenu.classList.contains('open')) {
+                    e.stopPropagation();
+                    characterMenu.classList.remove('open');
+                    // Only hide position display if not set to always visible
+                    if (!togglePositionDisplay.checked) {
+                        positionDisplay.style.display = 'none';
+                    }
+                }
+            });
+        }
+
+        // WebSocket connection
+        function connectWebSocket() {
+            console.log(`Connecting to WebSocket: ${BACKEND_URL}/ws`);
+            
+            ws = new WebSocket(BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws');
+
+            ws.onopen = () => {
+                console.log('WebSocket connected!');
+                isConnected = true;
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received:', data);
+
+                if (data.type === 'response') {
+                    // Display response in console for now
+                    console.log('Assistant:', data.text);
+                    
+                    // Request TTS
+                    ws.send(JSON.stringify({
+                        type: 'tts',
+                        text: data.text,
+                        voice: 'asuka'
+                    }));
+                } else if (data.type === 'audio') {
+                    // Play audio and trigger lip sync
+                    playAudioWithLipSync(data.data);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                isConnected = false;
+                // Attempt reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function playAudioWithLipSync(audioBase64) {
+            const audio = new Audio('data:audio/wav;base64,' + audioBase64);
+            
+            audio.onloadedmetadata = () => {
+                const durationMs = audio.duration * 1000;
+                startLipSync(durationMs);
+            };
+
+            audio.play().catch(err => {
+                console.error('Audio playback error:', err);
+            });
+
+            const speakBtn = document.getElementById('speak-btn');
+            speakBtn.classList.add('speaking');
+            speakBtn.textContent = '🔊';
+
+            audio.onended = () => {
+                speakBtn.classList.remove('speaking');
+                speakBtn.textContent = 'Send';
+            };
+        }
+
+        // Text input handler
+        function initTextInput() {
+            const textInput = document.getElementById('text-input');
+            const speakBtn = document.getElementById('speak-btn');
+
+            const sendMessage = () => {
+                const text = textInput.value.trim();
+                if (!text || !isConnected) return;
+
+                console.log('Sending:', text);
+                
+                ws.send(JSON.stringify({
+                    type: 'message',
+                    text: text
+                }));
+
+                textInput.value = '';
+            };
+
+            speakBtn.addEventListener('click', sendMessage);
+            textInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+        }
+
+        // Initialize everything
+        async function init() {
+            console.log('🎭 Initializing Live2D system...');
+            
+            initPixi();
+            initCharacterSelector();
+            initTextInput();
+            initTestLipSync();
+            
+            // Load default character
+            await loadLive2DModel(CHARACTERS[0]);
+            
+            // Connect to backend
+            connectWebSocket();
+            
+            console.log('✅ System ready!');
+        }
+
+        // Start the app
+        init();
+    </script>
+</body>
+</html>

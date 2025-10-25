@@ -908,35 +908,17 @@
                 // Smooth mouth movement
                 lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * lipSyncState.smoothingFactor;
 
-                // Access core model directly and find ParamMouthOpenY
-                if (internalModel.coreModel) {
-                    const coreModel = internalModel.coreModel;
+                // Use the Cubism SDK's addParameterValueById method
+                if (internalModel.coreModel && typeof internalModel.coreModel.addParameterValueById === 'function') {
+                    // This is the correct Cubism 4 SDK method
+                    internalModel.coreModel.addParameterValueById('ParamMouthOpenY', lipSyncState.currentMouthOpen, 0.8);
                     
-                    // Try multiple access methods
-                    // Method 1: Direct _parameterValues array (Cubism 4 Core)
-                    if (coreModel._parameterValues && coreModel._parameterIds) {
-                        const paramIndex = coreModel._parameterIds.indexOf('ParamMouthOpenY');
-                        if (paramIndex >= 0) {
-                            coreModel._parameterValues[paramIndex] = lipSyncState.currentMouthOpen;
-                            
-                            if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
-                                console.log('💬 Lip sync active via _parameterValues:', lipSyncState.currentMouthOpen.toFixed(3));
-                                lipSyncState.debugLogged = true;
-                            }
-                        }
+                    if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
+                        console.log('💬 Lip sync active via addParameterValueById:', lipSyncState.currentMouthOpen.toFixed(3));
+                        lipSyncState.debugLogged = true;
                     }
-                    // Method 2: getParameterIndex/setParameterValueByIndex (older API)
-                    else if (typeof coreModel.getParameterIndex === 'function') {
-                        const paramIndex = coreModel.getParameterIndex('ParamMouthOpenY');
-                        if (paramIndex >= 0 && typeof coreModel.setParameterValueByIndex === 'function') {
-                            coreModel.setParameterValueByIndex(paramIndex, lipSyncState.currentMouthOpen);
-                            
-                            if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
-                                console.log('💬 Lip sync active via setParameterValueByIndex:', lipSyncState.currentMouthOpen.toFixed(3));
-                                lipSyncState.debugLogged = true;
-                            }
-                        }
-                    }
+                } else {
+                    console.warn('addParameterValueById not available');
                 }
                 
                 if (!lipSyncState.isSpeaking) {

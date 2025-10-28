@@ -1,5 +1,5 @@
 // Service Worker for AI Assistant Pod PWA
-const CACHE_NAME = 'ai-assistant-pod-v38';
+const CACHE_NAME = 'ai-assistant-pod-v39';
 const urlsToCache = [
   './',
   './index.html',
@@ -20,6 +20,20 @@ self.addEventListener('install', (event) => {
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
+  // Skip caching for chrome-extension, chrome://, data:, blob: URLs
+  const url = event.request.url;
+  if (url.startsWith('chrome-extension://') || 
+      url.startsWith('chrome://') || 
+      url.startsWith('data:') || 
+      url.startsWith('blob:')) {
+    return; // Let browser handle these
+  }
+
+  // Only cache http and https requests
+  if (!event.request.url.startsWith('http')) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
@@ -42,7 +56,12 @@ self.addEventListener('fetch', (event) => {
 
           caches.open(CACHE_NAME)
             .then((cache) => {
-              cache.put(event.request, responseToCache);
+              // Additional check before caching
+              if (event.request.url.startsWith('http')) {
+                cache.put(event.request, responseToCache).catch((err) => {
+                  console.log('Cache put failed:', err);
+                });
+              }
             });
 
           return response;

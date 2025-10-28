@@ -13,7 +13,8 @@
     <!-- Load libraries in correct order -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.8/browser/pixi.min.js"></script>
     <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.5.0/dist/index.min.js"></script>
+    <!-- Try unpkg instead of jsdelivr -->
+    <script src="https://unpkg.com/pixi-live2d-display@0.5.0/dist/index.min.js"></script>
 
     <style>
         * {
@@ -449,30 +450,47 @@
     <script>
         // Wait for all libraries to load
         window.addEventListener('load', () => {
-            // Verify libraries loaded
-            console.log('PIXI available:', typeof PIXI !== 'undefined');
-            console.log('Live2DCubismCore available:', typeof Live2DCubismCore !== 'undefined');
-            console.log('PIXI.live2d available:', typeof PIXI.live2d !== 'undefined');
-            
-            if (typeof PIXI === 'undefined') {
-                showError('PixiJS failed to load');
-                return;
-            }
-            
-            if (typeof PIXI.live2d === 'undefined') {
-                showError('Live2D plugin failed to load. Trying fallback...');
-                // Try to initialize from window.PIXI_LIVE2D_DISPLAY
-                if (typeof PIXI_LIVE2D_DISPLAY !== 'undefined') {
-                    PIXI.live2d = PIXI_LIVE2D_DISPLAY;
-                    console.log('✅ Live2D loaded from PIXI_LIVE2D_DISPLAY');
-                    init();
-                } else {
-                    showError('Live2D plugin not available');
+            // Small delay to ensure all scripts are fully initialized
+            setTimeout(() => {
+                // Verify libraries loaded
+                console.log('PIXI available:', typeof PIXI !== 'undefined');
+                console.log('Live2DCubismCore available:', typeof Live2DCubismCore !== 'undefined');
+                console.log('PIXI.live2d available:', typeof PIXI.live2d !== 'undefined');
+                console.log('PIXI_LIVE2D_DISPLAY available:', typeof PIXI_LIVE2D_DISPLAY !== 'undefined');
+                console.log('window.PIXI_LIVE2D_DISPLAY available:', typeof window.PIXI_LIVE2D_DISPLAY !== 'undefined');
+                
+                if (typeof PIXI === 'undefined') {
+                    showError('PixiJS failed to load');
                     return;
                 }
-            } else {
+                
+                // Try multiple ways to get the Live2D plugin
+                if (typeof PIXI.live2d === 'undefined') {
+                    console.log('PIXI.live2d not found, trying fallbacks...');
+                    
+                    // Try window.PIXI_LIVE2D_DISPLAY
+                    if (typeof window.PIXI_LIVE2D_DISPLAY !== 'undefined') {
+                        PIXI.live2d = window.PIXI_LIVE2D_DISPLAY;
+                        console.log('✅ Live2D loaded from window.PIXI_LIVE2D_DISPLAY');
+                    }
+                    // Try global PIXI_LIVE2D_DISPLAY
+                    else if (typeof PIXI_LIVE2D_DISPLAY !== 'undefined') {
+                        PIXI.live2d = PIXI_LIVE2D_DISPLAY;
+                        console.log('✅ Live2D loaded from PIXI_LIVE2D_DISPLAY');
+                    }
+                    // Check if it's on PIXI itself
+                    else if (PIXI.Live2DModel || PIXI.live2d) {
+                        console.log('✅ Live2D already on PIXI object');
+                    }
+                    else {
+                        console.error('Available globals:', Object.keys(window).filter(k => k.includes('PIXI') || k.includes('Live2D')));
+                        showError('Live2D plugin not available. Check console for details.');
+                        return;
+                    }
+                }
+                
                 init();
-            }
+            }, 100); // 100ms delay
         });
 
         // Configuration

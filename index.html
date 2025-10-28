@@ -478,11 +478,27 @@
         // Configuration
         const BACKEND_URL = 'http://localhost:8000';
         
-        // Character configurations
+        // ⚠️ IMPORTANT: Update these paths to match your local file structure
+        // For example, if your files are in: ./models/compa/compa.model3.json
+        const CUSTOM_MODELS_PATH = './models/';
+        
+        // Character configurations with LOCAL FILES
         const CHARACTERS = [
             {
+                id: 'compa',
+                name: 'Compa',
+                description: 'Your custom character',
+                modelUrl: '/models/compa/1400_1401.model3.json',
+                scale: 0.20,
+                position: { x: 0, y: 0.1 },
+                scaleMobile: 0.15,
+                positionMobile: { x: 0, y: 0.2 },
+                isCustom: true
+            },
+            {
+                id: 'haru',
                 name: 'Haru',
-                description: 'Cheerful and energetic',
+                description: 'Cheerful and energetic (Demo)',
                 modelUrl: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json',
                 scale: 0.15,
                 position: { x: 0, y: 0.2 },
@@ -491,8 +507,9 @@
                 isCustom: false
             },
             {
+                id: 'shizuku',
                 name: 'Shizuku',
-                description: 'Elegant and refined',
+                description: 'Elegant and refined (Demo)',
                 modelUrl: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/shizuku/shizuku.model.json',
                 scale: 0.35,
                 position: { x: 0, y: 0.1 },
@@ -571,7 +588,7 @@
                     model.destroy();
                 }
 
-                console.log(`Loading ${character.name}...`);
+                console.log(`Loading ${character.name} from: ${character.modelUrl}`);
                 currentCharacter = character;
 
                 model = await PIXI.live2d.Live2DModel.from(character.modelUrl, {
@@ -589,17 +606,33 @@
                 });
 
                 loading.style.display = 'none';
-                console.log(`✅ ${character.name} loaded!`);
+                console.log(`✅ ${character.name} loaded successfully!`);
 
                 return model;
             } catch (err) {
                 console.error('Failed to load model:', err);
                 loading.style.display = 'none';
                 error.style.display = 'block';
+                
+                let errorMessage = err.message;
+                if (character.isCustom) {
+                    errorMessage = `
+                        <div>Failed to load custom character</div>
+                        <div style="font-size: 14px; margin-top: 10px; color: #999;">
+                            Make sure the model file exists at:<br>
+                            <code style="background: rgba(255,255,255,0.1); padding: 5px; border-radius: 3px; display: inline-block; margin-top: 5px;">
+                                ${character.modelUrl}
+                            </code>
+                        </div>
+                        <div style="font-size: 12px; margin-top: 10px; color: #999;">
+                            Error: ${err.message}
+                        </div>
+                    `;
+                }
+                
                 error.innerHTML = `
                     <div style="font-size: 48px; margin-bottom: 20px;">😢</div>
-                    <div>Failed to load character</div>
-                    <div style="font-size: 14px; margin-top: 10px; color: #999;">${err.message}</div>
+                    ${errorMessage}
                 `;
             }
         }
@@ -762,12 +795,16 @@
             });
             
             copyBtn.addEventListener('click', () => {
+                const isMobile = window.innerWidth < 768;
                 const config = `{
+    id: '${currentCharacter.id}',
     name: '${currentCharacter.name}',
     description: '${currentCharacter.description}',
     modelUrl: '${currentCharacter.modelUrl}',
     scale: ${parseFloat(scaleSlider.value).toFixed(2)},
     position: { x: ${parseFloat(xSlider.value).toFixed(2)}, y: ${parseFloat(ySlider.value).toFixed(2)} },
+    scaleMobile: ${parseFloat(scaleSlider.value).toFixed(2)},
+    positionMobile: { x: ${parseFloat(xSlider.value).toFixed(2)}, y: ${parseFloat(ySlider.value).toFixed(2)} },
     isCustom: ${currentCharacter.isCustom}
 }`;
                 

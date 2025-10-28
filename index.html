@@ -9,13 +9,6 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎭</text></svg>">
     <title>AI Assistant Pod - Live2D</title>
-    
-    <!-- Load libraries in correct order -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.8/browser/pixi.min.js"></script>
-    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
-    <!-- Try unpkg instead of jsdelivr -->
-    <script src="https://unpkg.com/pixi-live2d-display@0.5.0/dist/index.min.js"></script>
-
     <style>
         * {
             margin: 0;
@@ -87,6 +80,7 @@
             max-width: 80%;
         }
 
+        /* Text input for testing */
         #text-input-container {
             position: fixed;
             bottom: 20px;
@@ -136,6 +130,7 @@
             background: rgba(255, 100, 100, 0.8);
         }
 
+        /* Character selector - Desktop only */
         #character-toggle {
             position: fixed;
             top: 20px;
@@ -160,6 +155,7 @@
             transform: scale(1.1);
         }
 
+        /* Hide toggle button on mobile - use swipe instead */
         @media (max-width: 768px) {
             #character-toggle {
                 display: none;
@@ -192,6 +188,7 @@
             text-align: center;
         }
 
+        /* Live editing controls */
         #edit-controls {
             background: rgba(0, 0, 0, 0.5);
             border: 2px solid rgba(0, 212, 255, 0.5);
@@ -252,40 +249,71 @@
         }
 
         .control-row span {
-            min-width: 50px;
-            color: rgba(255, 255, 255, 0.8);
+            color: #00d4ff;
             font-size: 12px;
+            min-width: 50px;
             text-align: right;
+            font-family: monospace;
         }
 
-        .character-list {
+        .control-buttons {
             display: flex;
-            flex-direction: column;
-            gap: 10px;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .control-buttons button {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 5px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-reset {
+            background: rgba(255, 100, 100, 0.8);
+            color: white;
+        }
+
+        .btn-reset:hover {
+            background: rgba(255, 100, 100, 1);
+        }
+
+        .btn-copy {
+            background: rgba(0, 212, 255, 0.8);
+            color: white;
+        }
+
+        .btn-copy:hover {
+            background: rgba(0, 212, 255, 1);
         }
 
         .character-item {
-            background: rgba(0, 0, 0, 0.4);
+            background: rgba(255, 255, 255, 0.1);
             border: 2px solid rgba(255, 255, 255, 0.2);
             border-radius: 10px;
             padding: 15px;
+            margin-bottom: 15px;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.2s;
         }
 
         .character-item:hover {
-            background: rgba(0, 0, 0, 0.6);
-            border-color: rgba(0, 212, 255, 0.5);
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #00d4ff;
             transform: translateX(-5px);
         }
 
         .character-item.active {
-            background: rgba(0, 212, 255, 0.2);
+            background: rgba(0, 212, 255, 0.3);
             border-color: #00d4ff;
         }
 
         .character-name {
             color: white;
+            font-size: 16px;
             font-weight: bold;
             margin-bottom: 5px;
         }
@@ -295,88 +323,145 @@
             font-size: 12px;
         }
 
-        #copy-config-btn {
-            width: 100%;
-            background: rgba(0, 212, 255, 0.6);
-            border: none;
-            border-radius: 8px;
-            padding: 12px;
+        #status-info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 15px;
+            border-radius: 10px;
             color: white;
-            font-size: 14px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 15px;
+            font-size: 12px;
+            z-index: 10;
+            backdrop-filter: blur(10px);
         }
 
-        #copy-config-btn:hover {
-            background: rgba(0, 212, 255, 0.8);
-        }
-
+        /* Position/Scale display at bottom */
         #position-display {
             position: fixed;
-            top: 80px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 15px;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            padding: 8px 15px;
             border-radius: 8px;
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            z-index: 102;
+            color: #00d4ff;
+            font-size: 11px;
+            font-family: monospace;
+            z-index: 10;
+            backdrop-filter: blur(10px);
             display: none;
-            border: 1px solid rgba(0, 212, 255, 0.5);
+            white-space: pre;
         }
 
-        #position-display.active {
+        #position-display.always-visible {
             display: block;
         }
 
-        #position-display .pos-line {
-            margin: 3px 0;
-        }
-
-        #position-display .pos-label {
-            color: #00d4ff;
-            font-weight: bold;
-        }
-
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-top: 10px;
-        }
-
-        .checkbox-group input[type="checkbox"] {
-            width: 16px;
-            height: 16px;
-            cursor: pointer;
-        }
-
-        .checkbox-group label {
-            color: rgba(255, 255, 255, 0.9);
-            font-size: 12px;
-            cursor: pointer;
-            margin: 0;
-        }
-
-        #test-lipsync {
-            width: 100%;
-            background: rgba(255, 100, 255, 0.6);
-            border: none;
+        /* Settings toggle section */
+        .settings-section {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 8px;
             padding: 12px;
-            color: white;
+            margin-bottom: 15px;
+        }
+
+        .settings-section h3 {
+            color: #00d4ff;
             font-size: 14px;
-            font-weight: bold;
+            margin: 0 0 10px 0;
+        }
+
+        .toggle-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+
+        .toggle-option label {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 12px;
+            flex: 1;
+        }
+
+        /* Toggle switch */
+        .toggle-switch {
+            position: relative;
+            width: 44px;
+            height: 24px;
             cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 10px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 24px;
+            transition: 0.3s;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: #00d4ff;
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(20px);
+        }
+
+        /* Hide edit controls when toggled off */
+        #edit-controls.hidden {
+            display: none;
+        }
+
+        /* Test lip sync button */
+        #test-lipsync {
+            position: fixed;
+            top: 80px;
+            left: 20px;
+            background: rgba(255, 100, 100, 0.7);
+            border: none;
+            border-radius: 10px;
+            padding: 10px 15px;
+            color: white;
+            font-size: 12px;
+            cursor: pointer;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            transition: all 0.2s;
         }
 
         #test-lipsync:hover {
-            background: rgba(255, 100, 255, 0.8);
+            background: rgba(255, 100, 100, 0.9);
+            transform: scale(1.05);
+        }
+
+        @media (max-width: 768px) {
+            #test-lipsync {
+                display: none; /* Hide on mobile */
+            }
         }
     </style>
 </head>
@@ -387,442 +472,775 @@
 
     <div id="loading">
         <div class="spinner"></div>
-        <div>Loading Live2D Character...</div>
+        <div>Loading Live2D model...</div>
     </div>
 
     <div id="error"></div>
 
-    <div id="text-input-container">
-        <input type="text" id="text-input" placeholder="Type a message...">
-        <button id="speak-btn">Send</button>
+    <div id="status-info">
+        <div>🎭 Live2D System</div>
+        <div id="model-status">No model loaded</div>
     </div>
 
-    <button id="character-toggle">🎭</button>
-    
-    <div id="position-display">
-        <div class="pos-line"><span class="pos-label">Scale:</span> <span id="pos-scale">1.00</span></div>
-        <div class="pos-line"><span class="pos-label">X:</span> <span id="pos-x">0.00</span></div>
-        <div class="pos-line"><span class="pos-label">Y:</span> <span id="pos-y">0.00</span></div>
-    </div>
+    <button id="test-lipsync">🗣️ Test Lip Sync</button>
 
+    <!-- Character selector toggle button -->
+    <button id="character-toggle">👤</button>
+
+    <!-- Character selection menu -->
     <div id="character-menu">
-        <h2>Characters</h2>
+        <h2>Select Character</h2>
         
+        <!-- Settings Section -->
+        <div class="settings-section">
+            <h3>⚙️ Settings</h3>
+            
+            <div class="toggle-option">
+                <label>Show Position Controls</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-edit-controls" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            
+            <div class="toggle-option">
+                <label>Always Show Position Display</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-position-display">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+        
+        <!-- Live editing controls -->
         <div id="edit-controls">
-            <h3>Live Position Editing</h3>
+            <h3>🎨 Adjust Position & Scale</h3>
             
             <div class="control-group">
-                <label>Scale</label>
+                <label>Base Scale</label>
                 <div class="control-row">
-                    <input type="range" id="scale-slider" min="0.1" max="3" step="0.01" value="1">
-                    <span id="scale-value">1.00</span>
+                    <input type="range" id="scale-slider" min="0.05" max="0.5" step="0.01" value="0.15">
+                    <span id="scale-value">0.15</span>
                 </div>
             </div>
             
             <div class="control-group">
-                <label>X Position</label>
+                <label>Position X (Left ← → Right)</label>
                 <div class="control-row">
-                    <input type="range" id="x-slider" min="-2" max="2" step="0.01" value="0">
+                    <input type="range" id="x-slider" min="-0.3" max="0.3" step="0.01" value="0">
                     <span id="x-value">0.00</span>
                 </div>
             </div>
             
             <div class="control-group">
-                <label>Y Position</label>
+                <label>Position Y (Up ↑ ↓ Down)</label>
                 <div class="control-row">
-                    <input type="range" id="y-slider" min="-2" max="2" step="0.01" value="0">
-                    <span id="y-value">0.00</span>
+                    <input type="range" id="y-slider" min="-0.3" max="0.3" step="0.01" value="0.1">
+                    <span id="y-value">0.10</span>
                 </div>
             </div>
-
-            <div class="checkbox-group">
-                <input type="checkbox" id="toggle-position-display">
-                <label for="toggle-position-display">Show Position Always</label>
+            
+            <div class="control-buttons">
+                <button class="btn-reset" id="reset-btn">Reset</button>
+                <button class="btn-copy" id="copy-btn">Copy Config</button>
             </div>
-
-            <button id="test-lipsync">🎤 Test Lip Sync</button>
-            <button id="copy-config-btn">Copy Config</button>
         </div>
         
-        <div class="character-list" id="character-list"></div>
+        <div id="character-list">
+            <!-- Characters will be populated here -->
+        </div>
     </div>
 
-    <script>
-        // Wait for all libraries to load
-        window.addEventListener('load', () => {
-            // Small delay to ensure all scripts are fully initialized
-            setTimeout(() => {
-                // Verify libraries loaded
-                console.log('PIXI available:', typeof PIXI !== 'undefined');
-                console.log('Live2DCubismCore available:', typeof Live2DCubismCore !== 'undefined');
-                console.log('PIXI.live2d available:', typeof PIXI.live2d !== 'undefined');
-                console.log('PIXI_LIVE2D_DISPLAY available:', typeof PIXI_LIVE2D_DISPLAY !== 'undefined');
-                console.log('window.PIXI_LIVE2D_DISPLAY available:', typeof window.PIXI_LIVE2D_DISPLAY !== 'undefined');
-                
-                if (typeof PIXI === 'undefined') {
-                    showError('PixiJS failed to load');
-                    return;
-                }
-                
-                // Try multiple ways to get the Live2D plugin
-                if (typeof PIXI.live2d === 'undefined') {
-                    console.log('PIXI.live2d not found, trying fallbacks...');
-                    
-                    // Try window.PIXI_LIVE2D_DISPLAY
-                    if (typeof window.PIXI_LIVE2D_DISPLAY !== 'undefined') {
-                        PIXI.live2d = window.PIXI_LIVE2D_DISPLAY;
-                        console.log('✅ Live2D loaded from window.PIXI_LIVE2D_DISPLAY');
-                    }
-                    // Try global PIXI_LIVE2D_DISPLAY
-                    else if (typeof PIXI_LIVE2D_DISPLAY !== 'undefined') {
-                        PIXI.live2d = PIXI_LIVE2D_DISPLAY;
-                        console.log('✅ Live2D loaded from PIXI_LIVE2D_DISPLAY');
-                    }
-                    // Check if it's on PIXI itself
-                    else if (PIXI.Live2DModel || PIXI.live2d) {
-                        console.log('✅ Live2D already on PIXI object');
-                    }
-                    else {
-                        console.error('Available globals:', Object.keys(window).filter(k => k.includes('PIXI') || k.includes('Live2D')));
-                        showError('Live2D plugin not available. Check console for details.');
-                        return;
-                    }
-                }
-                
-                init();
-            }, 100); // 100ms delay
-        });
+    <div id="position-display"></div>
 
+    <!-- Temporary text input for testing -->
+    <div id="text-input-container">
+        <input type="text" id="text-input" placeholder="Type a message to test lip-sync...">
+        <button id="speak-btn">Send</button>
+    </div>
+
+    <!-- Load PIXI.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    
+    <!-- Load Cubism 2 runtime (for older Live2D models) -->
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+    
+    <!-- Load Cubism 4 runtime (for newer Live2D models) -->
+    <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+    
+    <!-- Load pixi-live2d-display -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
+
+    <script>
         // Configuration
-        const BACKEND_URL = 'http://localhost:8000';
+        const BACKEND_URL = 'https://waifubackend.pokymedia.xyz';
         
-        // ⚠️ IMPORTANT: Update these paths to match your local file structure
-        // For example, if your files are in: ./models/compa/compa.model3.json
+        // Path to your custom models folder (relative to this HTML file)
+        // Put your Neptunia models in: /models/neptunia-character-name/
         const CUSTOM_MODELS_PATH = './models/';
         
-        // Character configurations with LOCAL FILES
+        // Available Live2D characters
         const CHARACTERS = [
+            // ========== YOUR CUSTOM MODELS ==========
             {
                 id: 'compa',
                 name: 'Compa',
-                description: 'Your custom character',
-                modelUrl: '/models/compa/1400_1401.model3.json',
-                scale: 0.20,
-                position: { x: 0, y: 0.1 },
-                scaleMobile: 0.15,
-                positionMobile: { x: 0, y: 0.2 },
+                description: 'Hyperdimension Neptunia',
+                modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
+                scale: 0.30,
+                scaleMobile: 0.24,
+                position: { x: 0.02, y: 0.24 },
+                positionMobile: { x: 0.13, y: 0.30 },
                 isCustom: true
             },
+            
+            // Add more Neptunia characters here:
+            /*
             {
-                id: 'haru',
-                name: 'Haru',
-                description: 'Cheerful and energetic (Demo)',
-                modelUrl: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/haru/haru_greeter_t03.model3.json',
-                scale: 0.15,
-                position: { x: 0, y: 0.2 },
-                scaleMobile: 0.12,
-                positionMobile: { x: 0, y: 0.3 },
-                isCustom: false
-            },
-            {
-                id: 'shizuku',
-                name: 'Shizuku',
-                description: 'Elegant and refined (Demo)',
-                modelUrl: 'https://cdn.jsdelivr.net/gh/guansss/pixi-live2d-display/test/assets/shizuku/shizuku.model.json',
-                scale: 0.35,
+                id: 'neptune',
+                name: 'Neptune',
+                description: 'Neptunia - Purple Heart',
+                modelUrl: CUSTOM_MODELS_PATH + 'neptune/neptune.model3.json',
+                scale: 0.1,
                 position: { x: 0, y: 0.1 },
-                scaleMobile: 0.25,
-                positionMobile: { x: 0, y: 0.2 },
-                isCustom: false
-            }
+                isCustom: true
+            },
+            */
         ];
 
-        // Global variables
-        let app, model;
-        let ws, isConnected = false;
-        let currentCharacter = CHARACTERS[0];
-        let audioContext, analyser, dataArray;
-        let lipSyncInterval;
+        // Global state
+        let app;
+        let currentModel = null;
+        let currentCharacter = null;
+        let ws = null;
+        let isConnected = false;
 
-        function showError(message) {
-            const loading = document.getElementById('loading');
-            const error = document.getElementById('error');
-            loading.style.display = 'none';
-            error.style.display = 'block';
-            error.innerHTML = `
-                <div style="font-size: 48px; margin-bottom: 20px;">😢</div>
-                <div>${message}</div>
-            `;
+        // Lip sync state
+        let lipSyncState = {
+            isSpeaking: false,
+            targetMouthOpen: 0,
+            currentMouthOpen: 0,
+            smoothingFactor: 0.3,
+            speakingStartTime: 0,
+            speakingDuration: 0,
+            debugLogged: false,
+            errorLogged: false,
+            audioAnalyzer: null,
+            audioDataArray: null
+        };
+
+        // Audio analysis for realistic lip sync
+        function setupAudioAnalysis(audio) {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaElementSource(audio);
+                const analyzer = audioContext.createAnalyser();
+                
+                analyzer.fftSize = 256;
+                const bufferLength = analyzer.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                source.connect(analyzer);
+                analyzer.connect(audioContext.destination);
+                
+                lipSyncState.audioAnalyzer = analyzer;
+                lipSyncState.audioDataArray = dataArray;
+                
+                console.log('🎤 Audio analysis setup complete');
+            } catch (error) {
+                console.error('Audio analysis setup failed:', error);
+            }
         }
 
-        // Initialize PixiJS
+        // Mouse tracking
+        let mouseX = 0;
+        let mouseY = 0;
+
+        // Initialize PIXI Application
         function initPixi() {
-            const container = document.getElementById('canvas-container');
+            const canvas = document.getElementById('live2d-canvas');
+            
+            // Check if Live2D runtimes are loaded
+            console.log('Checking Live2D runtimes...');
+            console.log('PIXI:', typeof PIXI !== 'undefined' ? '✅' : '❌');
+            console.log('PIXI.live2d:', typeof PIXI.live2d !== 'undefined' ? '✅' : '❌');
+            console.log('Live2DCubismCore:', typeof Live2DCubismCore !== 'undefined' ? '✅ (Cubism 4)' : '❌');
+            console.log('Live2D:', typeof Live2D !== 'undefined' ? '✅ (Cubism 2)' : '❌');
             
             app = new PIXI.Application({
-                view: document.getElementById('live2d-canvas'),
-                width: container.clientWidth,
-                height: container.clientHeight,
+                view: canvas,
+                width: window.innerWidth,
+                height: window.innerHeight,
+                backgroundColor: 0x1a1a2e,
                 backgroundAlpha: 0,
+                antialias: true,
                 resolution: window.devicePixelRatio || 1,
                 autoDensity: true
             });
 
+            // Handle window resize
             window.addEventListener('resize', () => {
-                app.renderer.resize(container.clientWidth, container.clientHeight);
-                if (model) {
-                    positionModel(model);
+                app.renderer.resize(window.innerWidth, window.innerHeight);
+                if (currentModel) {
+                    positionModel(currentModel, currentCharacter);
                 }
             });
 
-            console.log('✅ PixiJS initialized');
+            // Mouse tracking for gaze
+            window.addEventListener('mousemove', (event) => {
+                mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+                mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+            });
+
+            // Touch tracking for mobile
+            window.addEventListener('touchmove', (event) => {
+                if (event.touches.length > 0) {
+                    const touch = event.touches[0];
+                    mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
+                    mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
+                }
+            });
+
+            console.log('PIXI initialized');
         }
 
-        function positionModel(model) {
-            const isMobile = window.innerWidth < 768;
-            
-            const scale = (isMobile && currentCharacter.scaleMobile !== undefined) 
-                ? currentCharacter.scaleMobile 
-                : currentCharacter.scale;
-            const position = (isMobile && currentCharacter.positionMobile) 
-                ? currentCharacter.positionMobile 
-                : currentCharacter.position;
-            
-            model.scale.set(scale);
-            model.x = app.screen.width / 2 + (position.x * app.screen.width / 2);
-            model.y = app.screen.height / 2 + (position.y * app.screen.height / 2);
-        }
-
+        // Load Live2D model
         async function loadLive2DModel(character) {
-            const loading = document.getElementById('loading');
-            const error = document.getElementById('error');
-            
-            loading.style.display = 'block';
-            error.style.display = 'none';
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const statusDiv = document.getElementById('model-status');
+
+            loadingDiv.style.display = 'block';
+            errorDiv.style.display = 'none';
 
             try {
-                if (model) {
-                    app.stage.removeChild(model);
-                    model.destroy();
+                console.log(`Loading Live2D model: ${character.name}`);
+                console.log(`Model URL: ${character.modelUrl}`);
+                
+                // Remove previous model if exists
+                if (currentModel) {
+                    app.stage.removeChild(currentModel);
+                    currentModel.destroy();
                 }
 
-                console.log(`Loading ${character.name} from: ${character.modelUrl}`);
-                currentCharacter = character;
+                // For custom models, try to pre-fetch and clean the JSON
+                if (character.isCustom) {
+                    try {
+                        console.log('Fetching model JSON...');
+                        const response = await fetch(character.modelUrl);
+                        const text = await response.text();
+                        
+                        console.log('Raw JSON length:', text.length);
+                        console.log('First 200 chars:', text.substring(0, 200));
+                        console.log('Last 200 chars:', text.substring(text.length - 200));
+                        
+                        // Remove BOM if present
+                        const cleanText = text.replace(/^\uFEFF/, '');
+                        
+                        // Try to parse it
+                        const json = JSON.parse(cleanText);
+                        console.log('Model JSON parsed successfully:', json);
+                        
+                        // Create a blob URL with clean JSON
+                        const blob = new Blob([cleanText], { type: 'application/json' });
+                        const blobUrl = URL.createObjectURL(blob);
+                        
+                        // Load from blob URL
+                        const model = await PIXI.live2d.Live2DModel.from(blobUrl, {
+                            autoInteract: false
+                        });
+                        
+                        URL.revokeObjectURL(blobUrl);
+                        
+                        currentModel = model;
+                        currentCharacter = character;
 
-                model = await PIXI.live2d.Live2DModel.from(character.modelUrl, {
+                        // Position and scale the model
+                        positionModel(model, character);
+
+                        // Add to stage
+                        app.stage.addChild(model);
+
+                        // Setup model parameters
+                        setupModelBehaviors(model);
+
+                        // Update status
+                        statusDiv.textContent = `Model: ${character.name}`;
+                        loadingDiv.style.display = 'none';
+
+                        console.log('Live2D model loaded successfully!');
+                        console.log('Available motions:', model.internalModel.motionManager.definitions);
+                        console.log('Available expressions:', Object.keys(model.internalModel.motionManager.expressionManager?.definitions || {}));
+                        
+                        return;
+                    } catch (fetchError) {
+                        console.error('Pre-fetch failed, trying direct load:', fetchError);
+                        console.error('Error details:', fetchError.stack);
+                    }
+                }
+
+                // Standard loading (for CDN models or if pre-fetch fails)
+                const model = await PIXI.live2d.Live2DModel.from(character.modelUrl, {
                     autoInteract: false
                 });
 
-                positionModel(model);
+                currentModel = model;
+                currentCharacter = character;
+
+                // Position and scale the model
+                positionModel(model, character);
+
+                // Add to stage
                 app.stage.addChild(model);
 
-                model.on('hit', (hitAreas) => {
-                    console.log('Hit areas:', hitAreas);
-                    if (hitAreas.includes('body')) {
-                        model.motion('tap_body');
-                    }
-                });
+                // Setup model parameters
+                setupModelBehaviors(model);
 
-                loading.style.display = 'none';
-                console.log(`✅ ${character.name} loaded successfully!`);
+                // Update status
+                statusDiv.textContent = `Model: ${character.name}`;
+                loadingDiv.style.display = 'none';
 
-                return model;
-            } catch (err) {
-                console.error('Failed to load model:', err);
-                loading.style.display = 'none';
-                error.style.display = 'block';
-                
-                let errorMessage = err.message;
-                if (character.isCustom) {
-                    errorMessage = `
-                        <div>Failed to load custom character</div>
-                        <div style="font-size: 14px; margin-top: 10px; color: #999;">
-                            Make sure the model file exists at:<br>
-                            <code style="background: rgba(255,255,255,0.1); padding: 5px; border-radius: 3px; display: inline-block; margin-top: 5px;">
-                                ${character.modelUrl}
-                            </code>
-                        </div>
-                        <div style="font-size: 12px; margin-top: 10px; color: #999;">
-                            Error: ${err.message}
-                        </div>
-                    `;
-                }
-                
-                error.innerHTML = `
-                    <div style="font-size: 48px; margin-bottom: 20px;">😢</div>
-                    ${errorMessage}
+                console.log('Live2D model loaded successfully!');
+                console.log('Available motions:', model.internalModel.motionManager.definitions);
+                console.log('Available expressions:', Object.keys(model.internalModel.motionManager.expressionManager?.definitions || {}));
+
+            } catch (error) {
+                console.error('Error loading Live2D model:', error);
+                loadingDiv.style.display = 'none';
+                errorDiv.style.display = 'block';
+                errorDiv.innerHTML = `
+                    <div>Failed to load model: ${character.name}</div>
+                    <div style="font-size: 12px; margin-top: 10px; color: #ffaa00;">
+                        ${error.message}
+                    </div>
+                    <div style="font-size: 11px; margin-top: 5px; color: #888;">
+                        Check console for details
+                    </div>
                 `;
             }
         }
 
-        function setupAudioAnalysis(audio) {
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-
-            const source = audioContext.createMediaElementSource(audio);
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
+        function positionModel(model, character) {
+            // Center the model
+            model.anchor.set(0.5, 0.5);
             
-            source.connect(analyser);
-            analyser.connect(audioContext.destination);
+            const screenWidth = window.innerWidth;
+            const screenHeight = window.innerHeight;
             
-            const bufferLength = analyser.frequencyBinCount;
-            dataArray = new Uint8Array(bufferLength);
+            // Determine if mobile (phones) or desktop
+            const isMobile = screenWidth < 768;
+            
+            // Use mobile-specific scale and position if available and on mobile
+            const scale = (isMobile && character.scaleMobile !== undefined) ? character.scaleMobile : character.scale;
+            const position = (isMobile && character.positionMobile) ? character.positionMobile : character.position;
+            
+            console.log(`Screen: ${screenWidth}x${screenHeight}, Device: ${isMobile ? 'Mobile' : 'Desktop'}, Scale: ${scale.toFixed(3)}, Position: x=${position.x.toFixed(2)}, y=${position.y.toFixed(2)}`);
+            
+            // Position on screen
+            model.position.set(
+                window.innerWidth * (0.5 + position.x),
+                window.innerHeight * (0.5 + position.y)
+            );
+            
+            // Apply uniform scale (no stretching)
+            model.scale.set(scale);
         }
 
-        function startLipSync(durationMs) {
-            if (!model || !model.internalModel) return;
+        function setupModelBehaviors(model) {
+            // Enable automatic behaviors
+            model.on('hit', (hitAreas) => {
+                console.log('Hit areas:', hitAreas);
+                // You could trigger reactions here
+            });
 
-            const startTime = Date.now();
-            
-            lipSyncInterval = setInterval(() => {
-                const elapsed = Date.now() - startTime;
-                
-                if (elapsed >= durationMs) {
-                    stopLipSync();
-                    return;
-                }
+            // Animation loop for custom behaviors
+            app.ticker.add(() => {
+                if (!model) return;
 
-                let volume = 0;
-                if (analyser && dataArray) {
-                    analyser.getByteFrequencyData(dataArray);
-                    const sum = dataArray.reduce((a, b) => a + b, 0);
-                    volume = sum / dataArray.length / 255;
-                }
+                // Update eye tracking (gaze follows cursor)
+                updateEyeTracking(model);
 
-                try {
-                    const mouthParam = model.internalModel.coreModel.getParameterIndex('ParamMouthOpenY');
-                    if (mouthParam >= 0) {
-                        model.internalModel.coreModel.setParameterValueById(
-                            'ParamMouthOpenY',
-                            volume
-                        );
-                    }
-                } catch (err) {
-                    console.error('Lip sync error:', err);
-                }
-            }, 1000 / 30);
-        }
+                // Update lip sync
+                updateLipSync(model);
 
-        function stopLipSync() {
-            if (lipSyncInterval) {
-                clearInterval(lipSyncInterval);
-                lipSyncInterval = null;
-            }
-
-            if (model && model.internalModel) {
-                try {
-                    model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
-                } catch (err) {
-                    console.error('Error resetting mouth:', err);
-                }
-            }
-        }
-
-        function initTestLipSync() {
-            const testBtn = document.getElementById('test-lipsync');
-            
-            testBtn.addEventListener('click', () => {
-                console.log('Testing lip sync...');
-                
-                const testDuration = 3000;
-                const startTime = Date.now();
-                
-                lipSyncInterval = setInterval(() => {
-                    const elapsed = Date.now() - startTime;
-                    
-                    if (elapsed >= testDuration) {
-                        stopLipSync();
-                        return;
-                    }
-
-                    const t = elapsed / 1000;
-                    const mouthValue = Math.abs(Math.sin(t * 10)) * 0.8;
-
-                    try {
-                        if (model && model.internalModel) {
-                            model.internalModel.coreModel.setParameterValueById(
-                                'ParamMouthOpenY',
-                                mouthValue
-                            );
-                        }
-                    } catch (err) {
-                        console.error('Lip sync test error:', err);
-                    }
-                }, 1000 / 30);
+                // Update breathing (Live2D models have this built-in, but we can enhance)
+                updateBreathing(model);
             });
         }
 
+        function updateEyeTracking(model) {
+            try {
+                const coreModel = model.internalModel.coreModel;
+                const parameters = coreModel.parameters;
+                
+                // Common Live2D eye parameters
+                const eyeParams = [
+                    'ParamAngleX',
+                    'ParamAngleY',
+                    'ParamEyeBallX',
+                    'ParamEyeBallY'
+                ];
+
+                // Smooth eye movement
+                const eyeX = mouseX * 30; // Scale to appropriate range
+                const eyeY = mouseY * 30;
+
+                for (let i = 0; i < parameters.count; i++) {
+                    const paramId = parameters.ids[i];
+                    
+                    if (eyeParams.includes(paramId)) {
+                        const current = parameters.values[i];
+                        let target = 0;
+                        
+                        if (paramId.includes('X')) target = eyeX;
+                        if (paramId.includes('Y')) target = eyeY;
+                        
+                        // Smooth interpolation
+                        const smoothed = current + (target - current) * 0.1;
+                        parameters.values[i] = smoothed;
+                    }
+                }
+            } catch (error) {
+                // Parameters might not exist, that's okay
+            }
+        }
+
+        function updateLipSync(model) {
+            if (!model || !model.internalModel) return;
+            
+            try {
+                const internalModel = model.internalModel;
+                
+                // Animate mouth based on audio analysis or fallback to simple animation
+                if (lipSyncState.isSpeaking) {
+                    const elapsed = Date.now() - lipSyncState.speakingStartTime;
+                    const progress = Math.min(elapsed / lipSyncState.speakingDuration, 1);
+                    
+                    if (lipSyncState.audioAnalyzer && lipSyncState.audioDataArray) {
+                        // Real-time audio analysis
+                        lipSyncState.audioAnalyzer.getByteFrequencyData(lipSyncState.audioDataArray);
+                        
+                        // Calculate average volume (focusing on speech frequencies 85Hz-255Hz)
+                        let sum = 0;
+                        const startBin = 3;  // ~85Hz
+                        const endBin = 30;   // ~3kHz (speech range)
+                        for (let i = startBin; i < endBin; i++) {
+                            sum += lipSyncState.audioDataArray[i];
+                        }
+                        const average = sum / (endBin - startBin);
+                        
+                        // Normalize to 0-1 range and apply curve for more natural movement
+                        let volume = average / 255.0;
+                        
+                        // Apply some easing to make it look more natural
+                        volume = Math.pow(volume, 0.5); // Square root for softer curve
+                        
+                        // Add slight randomness for more natural feel
+                        volume += (Math.random() - 0.5) * 0.1;
+                        volume = Math.max(0, Math.min(1, volume));
+                        
+                        // Fade out near the end
+                        const fadeOutStart = 0.85;
+                        if (progress > fadeOutStart) {
+                            const fadeProgress = (progress - fadeOutStart) / (1 - fadeOutStart);
+                            volume *= (1 - fadeProgress);
+                        }
+                        
+                        lipSyncState.targetMouthOpen = volume;
+                    } else {
+                        // Fallback: Simple oscillation pattern
+                        const baseOscillation = Math.sin(elapsed * 0.025) * 0.5 + 0.5;
+                        const microOscillation = Math.sin(elapsed * 0.08) * 0.3;
+                        const combinedOscillation = (baseOscillation + microOscillation) / 1.3;
+                        
+                        const intensityCurve = Math.sin(progress * Math.PI);
+                        lipSyncState.targetMouthOpen = combinedOscillation * intensityCurve * 1.0;
+                    }
+                    
+                    if (progress >= 1) {
+                        lipSyncState.isSpeaking = false;
+                        lipSyncState.targetMouthOpen = 0;
+                        lipSyncState.audioAnalyzer = null;
+                        lipSyncState.audioDataArray = null;
+                    }
+                }
+
+                // Smooth mouth movement with faster response
+                const smoothing = lipSyncState.audioAnalyzer ? 0.6 : 0.3; // Faster when using audio
+                lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * smoothing;
+
+                // Use setParameterValueById to set absolute value
+                if (internalModel.coreModel && typeof internalModel.coreModel.setParameterValueById === 'function') {
+                    internalModel.coreModel.setParameterValueById('ParamMouthOpenY', lipSyncState.currentMouthOpen);
+                    
+                    if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
+                        console.log('💬 Lip sync active via setParameterValueById:', lipSyncState.currentMouthOpen.toFixed(3));
+                        console.log('Audio analysis:', lipSyncState.audioAnalyzer ? 'ENABLED ✅' : 'DISABLED (fallback)');
+                        lipSyncState.debugLogged = true;
+                    }
+                } else {
+                    console.warn('setParameterValueById not available');
+                }
+                
+                if (!lipSyncState.isSpeaking) {
+                    lipSyncState.debugLogged = false;
+                }
+                
+            } catch (error) {
+                if (lipSyncState.isSpeaking && !lipSyncState.errorLogged) {
+                    console.error('Lip sync error:', error);
+                    lipSyncState.errorLogged = true;
+                }
+                if (!lipSyncState.isSpeaking) {
+                    lipSyncState.errorLogged = false;
+                }
+            }
+        }
+
+        function updateBreathing(model) {
+            try {
+                const coreModel = model.internalModel.coreModel;
+                const parameters = coreModel.parameters;
+                const time = Date.now() * 0.001;
+                
+                // Gentle breathing motion (Live2D usually has this built-in, but we can enhance)
+                const breathValue = Math.sin(time * 2) * 0.5 + 0.5; // 0 to 1
+                
+                const breathParams = ['ParamBreath', 'PARAM_BREATH'];
+                for (let i = 0; i < parameters.count; i++) {
+                    const paramId = parameters.ids[i];
+                    if (breathParams.includes(paramId)) {
+                        parameters.values[i] = breathValue;
+                    }
+                }
+            } catch (error) {
+                // Parameters might not exist
+            }
+        }
+
+        function startLipSync(durationMs) {
+            lipSyncState.isSpeaking = true;
+            lipSyncState.speakingStartTime = Date.now();
+            lipSyncState.speakingDuration = durationMs;
+            console.log(`🗣️ Started lip sync for ${durationMs}ms (${(durationMs/1000).toFixed(2)}s)`);
+        }
+
+        // Test lip sync button
+        function initTestLipSync() {
+            const testBtn = document.getElementById('test-lipsync');
+            if (testBtn) {
+                testBtn.addEventListener('click', () => {
+                    console.log('=== Testing Lip Sync ===');
+                    
+                    if (!currentModel) {
+                        console.error('No model loaded!');
+                        return;
+                    }
+                    
+                    // Log all available parameters
+                    try {
+                        if (!currentModel.internalModel || !currentModel.internalModel.coreModel) {
+                            console.error('Model not fully initialized yet');
+                            return;
+                        }
+                        
+                        const coreModel = currentModel.internalModel.coreModel;
+                        
+                        // Debug the structure
+                        console.log('CoreModel type:', coreModel.constructor.name);
+                        console.log('CoreModel keys:', Object.keys(coreModel));
+                        
+                        // Try different possible locations
+                        if (coreModel.parameters) {
+                            console.log('Found: coreModel.parameters');
+                            const parameters = coreModel.parameters;
+                            console.log(`Total parameters: ${parameters.count}`);
+                        } else if (coreModel._parameters) {
+                            console.log('Found: coreModel._parameters');
+                            const parameters = coreModel._parameters;
+                            console.log(`Total parameters: ${parameters.count}`);
+                        } else if (coreModel.getParameterCount) {
+                            console.log('Found: coreModel.getParameterCount() method');
+                            const count = coreModel.getParameterCount();
+                            console.log(`Total parameters: ${count}`);
+                            
+                            // List parameters using getter methods
+                            const allParams = [];
+                            const mouthParams = [];
+                            
+                            for (let i = 0; i < count; i++) {
+                                const paramId = coreModel.getParameterId(i);
+                                allParams.push(paramId);
+                                
+                                if (paramId.toLowerCase().includes('mouth') || 
+                                    paramId.toLowerCase().includes('lip')) {
+                                    mouthParams.push(paramId);
+                                    console.log(`  🗣️  ${paramId}`);
+                                }
+                            }
+                            
+                            console.log('Mouth-related parameters:', mouthParams.length > 0 ? mouthParams.join(', ') : 'NONE FOUND!');
+                            console.log('All parameters:', allParams.join(', '));
+                        } else {
+                            console.error('Cannot find parameter access method');
+                            console.log('Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(coreModel)));
+                        }
+                        
+                    } catch (e) {
+                        console.error('Error reading parameters:', e);
+                        console.error('Stack:', e.stack);
+                    }
+                    
+                    // Trigger 3 second lip sync test
+                    console.log('Starting 3 second lip sync test...');
+                    startLipSync(3000);
+                });
+            }
+        }
+
+        // Character selection UI
         function initCharacterSelector() {
-            const toggleBtn = document.getElementById('character-toggle');
-            const characterMenu = document.getElementById('character-menu');
             const characterList = document.getElementById('character-list');
+            const characterMenu = document.getElementById('character-menu');
+            const toggleBtn = document.getElementById('character-toggle');
+            
+            // Settings toggles
+            const toggleEditControls = document.getElementById('toggle-edit-controls');
+            const togglePositionDisplay = document.getElementById('toggle-position-display');
+            const editControls = document.getElementById('edit-controls');
+            const positionDisplay = document.getElementById('position-display');
+            
+            // Live editing controls
             const scaleSlider = document.getElementById('scale-slider');
             const xSlider = document.getElementById('x-slider');
             const ySlider = document.getElementById('y-slider');
             const scaleValue = document.getElementById('scale-value');
             const xValue = document.getElementById('x-value');
             const yValue = document.getElementById('y-value');
-            const copyBtn = document.getElementById('copy-config-btn');
-            const positionDisplay = document.getElementById('position-display');
-            const togglePositionDisplay = document.getElementById('toggle-position-display');
+            const resetBtn = document.getElementById('reset-btn');
+            const copyBtn = document.getElementById('copy-btn');
+
+            // Load settings from localStorage
+            const showEditControls = localStorage.getItem('showEditControls') !== 'false'; // default true
+            const alwaysShowPosition = localStorage.getItem('alwaysShowPosition') === 'true'; // default false
             
-            const posScale = document.getElementById('pos-scale');
-            const posX = document.getElementById('pos-x');
-            const posY = document.getElementById('pos-y');
+            toggleEditControls.checked = showEditControls;
+            togglePositionDisplay.checked = alwaysShowPosition;
             
+            if (!showEditControls) {
+                editControls.classList.add('hidden');
+            }
+            
+            if (alwaysShowPosition) {
+                positionDisplay.classList.add('always-visible');
+            }
+
+            // Handle edit controls toggle
+            toggleEditControls.addEventListener('change', () => {
+                const isChecked = toggleEditControls.checked;
+                localStorage.setItem('showEditControls', isChecked);
+                
+                if (isChecked) {
+                    editControls.classList.remove('hidden');
+                } else {
+                    editControls.classList.add('hidden');
+                }
+            });
+
+            // Handle position display toggle
+            togglePositionDisplay.addEventListener('change', () => {
+                const isChecked = togglePositionDisplay.checked;
+                localStorage.setItem('alwaysShowPosition', isChecked);
+                
+                if (isChecked) {
+                    positionDisplay.classList.add('always-visible');
+                    updateModel(); // Update to show current values
+                } else {
+                    positionDisplay.classList.remove('always-visible');
+                }
+            });
+
+            // Update display values and model in real-time
             function updateModel() {
-                if (!model) return;
+                if (!currentModel || !currentCharacter) return;
                 
                 const scale = parseFloat(scaleSlider.value);
                 const x = parseFloat(xSlider.value);
                 const y = parseFloat(ySlider.value);
                 
-                model.scale.set(scale);
-                model.x = app.screen.width / 2 + (x * app.screen.width / 2);
-                model.y = app.screen.height / 2 + (y * app.screen.height / 2);
-                
+                // Update displayed values
                 scaleValue.textContent = scale.toFixed(2);
                 xValue.textContent = x.toFixed(2);
                 yValue.textContent = y.toFixed(2);
                 
-                posScale.textContent = scale.toFixed(2);
-                posX.textContent = x.toFixed(2);
-                posY.textContent = y.toFixed(2);
+                // Check if we're on mobile
+                const isMobile = window.innerWidth < 768;
+                
+                // Update character config temporarily
+                if (isMobile && currentCharacter.scaleMobile !== undefined) {
+                    // Update mobile-specific values
+                    currentCharacter.scaleMobile = scale;
+                    if (currentCharacter.positionMobile) {
+                        currentCharacter.positionMobile.x = x;
+                        currentCharacter.positionMobile.y = y;
+                    } else {
+                        currentCharacter.positionMobile = { x, y };
+                    }
+                } else {
+                    // Update desktop values
+                    currentCharacter.scale = scale;
+                    currentCharacter.position.x = x;
+                    currentCharacter.position.y = y;
+                }
+                
+                // Reposition model
+                positionModel(currentModel, currentCharacter);
+                
+                // Show position display
+                positionDisplay.textContent = `scale: ${scale.toFixed(2)}  |  x: ${x.toFixed(2)}  |  y: ${y.toFixed(2)}`;
+                
+                // Only show temporarily if not set to always visible
+                if (!togglePositionDisplay.checked) {
+                    positionDisplay.style.display = 'block';
+                }
             }
             
+            // Attach listeners
             scaleSlider.addEventListener('input', updateModel);
             xSlider.addEventListener('input', updateModel);
             ySlider.addEventListener('input', updateModel);
             
-            toggleBtn.addEventListener('click', () => {
-                if (characterMenu.classList.contains('open')) {
-                    positionDisplay.style.display = 'none';
-                } else {
-                    positionDisplay.style.display = 'block';
+            // Reset to original character values
+            resetBtn.addEventListener('click', () => {
+                if (!currentCharacter) return;
+                
+                // Find original character config
+                const originalChar = CHARACTERS.find(c => c.id === currentCharacter.id);
+                if (originalChar) {
+                    const isMobile = window.innerWidth < 768;
+                    
+                    // Reset to mobile or desktop values appropriately
+                    const scale = (isMobile && originalChar.scaleMobile !== undefined) ? originalChar.scaleMobile : originalChar.scale;
+                    const position = (isMobile && originalChar.positionMobile) ? originalChar.positionMobile : originalChar.position;
+                    
+                    scaleSlider.value = scale;
+                    xSlider.value = position.x;
+                    ySlider.value = position.y;
+                    updateModel();
                 }
             });
             
-            togglePositionDisplay.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    positionDisplay.style.display = 'block';
-                } else if (!characterMenu.classList.contains('open')) {
-                    positionDisplay.style.display = 'none';
-                }
-            });
-            
+            // Copy config to clipboard
             copyBtn.addEventListener('click', () => {
-                const isMobile = window.innerWidth < 768;
+                if (!currentCharacter) return;
+                
                 const config = `{
     id: '${currentCharacter.id}',
     name: '${currentCharacter.name}',
     description: '${currentCharacter.description}',
-    modelUrl: '${currentCharacter.modelUrl}',
+    modelUrl: CUSTOM_MODELS_PATH + '${currentCharacter.modelUrl.replace(CUSTOM_MODELS_PATH, '')}',
     scale: ${parseFloat(scaleSlider.value).toFixed(2)},
     position: { x: ${parseFloat(xSlider.value).toFixed(2)}, y: ${parseFloat(ySlider.value).toFixed(2)} },
-    scaleMobile: ${parseFloat(scaleSlider.value).toFixed(2)},
-    positionMobile: { x: ${parseFloat(xSlider.value).toFixed(2)}, y: ${parseFloat(ySlider.value).toFixed(2)} },
     isCustom: ${currentCharacter.isCustom}
 }`;
                 
@@ -838,9 +1256,11 @@
                 });
             });
             
+            // Update sliders when character changes
             function updateSliders(character) {
                 const isMobile = window.innerWidth < 768;
                 
+                // Use mobile values if available and on mobile, otherwise use desktop values
                 const scale = (isMobile && character.scaleMobile !== undefined) ? character.scaleMobile : character.scale;
                 const position = (isMobile && character.positionMobile) ? character.positionMobile : character.position;
                 
@@ -851,6 +1271,7 @@
                 updateModel();
             }
 
+            // Populate character list
             CHARACTERS.forEach((char, index) => {
                 const item = document.createElement('div');
                 item.className = 'character-item';
@@ -862,38 +1283,48 @@
                 `;
                 
                 item.addEventListener('click', () => {
+                    // Update active state
                     document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
                     item.classList.add('active');
                     
+                    // Load character
                     loadLive2DModel(char).then(() => {
                         updateSliders(char);
                     });
                     
+                    // Close menu
                     characterMenu.classList.remove('open');
                 });
                 
                 characterList.appendChild(item);
             });
             
+            // Initialize sliders with first character
             if (CHARACTERS.length > 0) {
                 updateSliders(CHARACTERS[0]);
             }
 
+            // Desktop: Toggle menu with button
             toggleBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
+                e.stopPropagation(); // Prevent this from triggering the close handler
                 characterMenu.classList.toggle('open');
             });
 
+            // Prevent menu clicks from closing the menu
             characterMenu.addEventListener('click', (e) => {
                 e.stopPropagation();
             });
 
+            // Mobile: Swipe from right edge to open menu
             let touchStartX = 0;
+            let touchStartY = 0;
             let isSwiping = false;
 
             document.addEventListener('touchstart', (e) => {
                 touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
                 
+                // Detect if touch started from right edge (last 50px)
                 if (touchStartX > window.innerWidth - 50) {
                     isSwiping = true;
                 }
@@ -905,6 +1336,7 @@
                 const touchX = e.touches[0].clientX;
                 const deltaX = touchStartX - touchX;
                 
+                // Swiping left (deltaX positive) opens the menu
                 if (deltaX > 50) {
                     characterMenu.classList.add('open');
                     isSwiping = false;
@@ -915,19 +1347,23 @@
                 isSwiping = false;
             });
 
+            // Close menu when clicking outside (desktop)
             document.addEventListener('click', (e) => {
                 if (characterMenu.classList.contains('open')) {
                     characterMenu.classList.remove('open');
+                    // Only hide position display if not set to always visible
                     if (!togglePositionDisplay.checked) {
                         positionDisplay.style.display = 'none';
                     }
                 }
             });
 
+            // Close menu when tapping outside on mobile
             document.addEventListener('touchstart', (e) => {
                 if (!characterMenu.contains(e.target) && characterMenu.classList.contains('open')) {
                     e.stopPropagation();
                     characterMenu.classList.remove('open');
+                    // Only hide position display if not set to always visible
                     if (!togglePositionDisplay.checked) {
                         positionDisplay.style.display = 'none';
                     }
@@ -935,6 +1371,7 @@
             });
         }
 
+        // WebSocket connection
         function connectWebSocket() {
             console.log(`Connecting to WebSocket: ${BACKEND_URL}/ws`);
             
@@ -950,14 +1387,17 @@
                 console.log('Received:', data);
 
                 if (data.type === 'response') {
+                    // Display response in console for now
                     console.log('Assistant:', data.text);
                     
+                    // Request TTS
                     ws.send(JSON.stringify({
                         type: 'tts',
                         text: data.text,
                         voice: 'compa'
                     }));
                 } else if (data.type === 'audio') {
+                    // Play audio and trigger lip sync
                     playAudioWithLipSync(data.data);
                 }
             };
@@ -969,6 +1409,7 @@
             ws.onclose = () => {
                 console.log('WebSocket disconnected');
                 isConnected = false;
+                // Attempt reconnect after 3 seconds
                 setTimeout(connectWebSocket, 3000);
             };
         }
@@ -978,7 +1419,10 @@
             
             audio.onloadedmetadata = () => {
                 const durationMs = audio.duration * 1000;
+                
+                // Setup audio analysis for real-time lip sync
                 setupAudioAnalysis(audio);
+                
                 startLipSync(durationMs);
             };
 
@@ -996,6 +1440,7 @@
             };
         }
 
+        // Text input handler
         function initTextInput() {
             const textInput = document.getElementById('text-input');
             const speakBtn = document.getElementById('speak-btn');
@@ -1020,6 +1465,7 @@
             });
         }
 
+        // Initialize everything
         async function init() {
             console.log('🎭 Initializing Live2D system...');
             
@@ -1028,12 +1474,17 @@
             initTextInput();
             initTestLipSync();
             
+            // Load default character
             await loadLive2DModel(CHARACTERS[0]);
             
+            // Connect to backend
             connectWebSocket();
             
             console.log('✅ System ready!');
         }
+
+        // Start the app
+        init();
     </script>
 </body>
 </html>

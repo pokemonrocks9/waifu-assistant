@@ -4,20 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#1a1a2e">
-    <!-- Fixed: Updated meta tags -->
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎭</text></svg>">
     <title>AI Assistant Pod - Live2D</title>
     
-    <!-- CRITICAL: Load Live2D runtime BEFORE pixi-live2d-display -->
-    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
-    
-    <!-- Load PixiJS v6 -->
+    <!-- Load libraries in correct order -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.8/browser/pixi.min.js"></script>
-    
-    <!-- Load pixi-live2d-display -->
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display@0.5.0/dist/index.min.js"></script>
 
     <style>
@@ -91,7 +86,6 @@
             max-width: 80%;
         }
 
-        /* Text input for testing */
         #text-input-container {
             position: fixed;
             bottom: 20px;
@@ -141,7 +135,6 @@
             background: rgba(255, 100, 100, 0.8);
         }
 
-        /* Character selector - Desktop only */
         #character-toggle {
             position: fixed;
             top: 20px;
@@ -166,7 +159,6 @@
             transform: scale(1.1);
         }
 
-        /* Hide toggle button on mobile - use swipe instead */
         @media (max-width: 768px) {
             #character-toggle {
                 display: none;
@@ -199,7 +191,6 @@
             text-align: center;
         }
 
-        /* Live editing controls */
         #edit-controls {
             background: rgba(0, 0, 0, 0.5);
             border: 2px solid rgba(0, 212, 255, 0.5);
@@ -321,7 +312,6 @@
             background: rgba(0, 212, 255, 0.8);
         }
 
-        /* Position display overlay */
         #position-display {
             position: fixed;
             top: 80px;
@@ -457,6 +447,34 @@
     </div>
 
     <script>
+        // Wait for all libraries to load
+        window.addEventListener('load', () => {
+            // Verify libraries loaded
+            console.log('PIXI available:', typeof PIXI !== 'undefined');
+            console.log('Live2DCubismCore available:', typeof Live2DCubismCore !== 'undefined');
+            console.log('PIXI.live2d available:', typeof PIXI.live2d !== 'undefined');
+            
+            if (typeof PIXI === 'undefined') {
+                showError('PixiJS failed to load');
+                return;
+            }
+            
+            if (typeof PIXI.live2d === 'undefined') {
+                showError('Live2D plugin failed to load. Trying fallback...');
+                // Try to initialize from window.PIXI_LIVE2D_DISPLAY
+                if (typeof PIXI_LIVE2D_DISPLAY !== 'undefined') {
+                    PIXI.live2d = PIXI_LIVE2D_DISPLAY;
+                    console.log('✅ Live2D loaded from PIXI_LIVE2D_DISPLAY');
+                    init();
+                } else {
+                    showError('Live2D plugin not available');
+                    return;
+                }
+            } else {
+                init();
+            }
+        });
+
         // Configuration
         const BACKEND_URL = 'http://localhost:8000';
         
@@ -491,6 +509,17 @@
         let audioContext, analyser, dataArray;
         let lipSyncInterval;
 
+        function showError(message) {
+            const loading = document.getElementById('loading');
+            const error = document.getElementById('error');
+            loading.style.display = 'none';
+            error.style.display = 'block';
+            error.innerHTML = `
+                <div style="font-size: 48px; margin-bottom: 20px;">😢</div>
+                <div>${message}</div>
+            `;
+        }
+
         // Initialize PixiJS
         function initPixi() {
             const container = document.getElementById('canvas-container');
@@ -504,7 +533,6 @@
                 autoDensity: true
             });
 
-            // Handle window resize
             window.addEventListener('resize', () => {
                 app.renderer.resize(container.clientWidth, container.clientHeight);
                 if (model) {
@@ -515,11 +543,9 @@
             console.log('✅ PixiJS initialized');
         }
 
-        // Position model helper
         function positionModel(model) {
             const isMobile = window.innerWidth < 768;
             
-            // Use mobile values if available, otherwise desktop
             const scale = (isMobile && currentCharacter.scaleMobile !== undefined) 
                 ? currentCharacter.scaleMobile 
                 : currentCharacter.scale;
@@ -532,7 +558,6 @@
             model.y = app.screen.height / 2 + (position.y * app.screen.height / 2);
         }
 
-        // Load Live2D model
         async function loadLive2DModel(character) {
             const loading = document.getElementById('loading');
             const error = document.getElementById('error');
@@ -541,7 +566,6 @@
             error.style.display = 'none';
 
             try {
-                // Remove existing model
                 if (model) {
                     app.stage.removeChild(model);
                     model.destroy();
@@ -550,18 +574,13 @@
                 console.log(`Loading ${character.name}...`);
                 currentCharacter = character;
 
-                // Load Live2D model
                 model = await PIXI.live2d.Live2DModel.from(character.modelUrl, {
                     autoInteract: false
                 });
 
-                // Position model
                 positionModel(model);
-
-                // Add to stage
                 app.stage.addChild(model);
 
-                // Setup interaction
                 model.on('hit', (hitAreas) => {
                     console.log('Hit areas:', hitAreas);
                     if (hitAreas.includes('body')) {
@@ -585,7 +604,6 @@
             }
         }
 
-        // Lip sync functionality
         function setupAudioAnalysis(audio) {
             if (!audioContext) {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -615,7 +633,6 @@
                     return;
                 }
 
-                // Get audio volume
                 let volume = 0;
                 if (analyser && dataArray) {
                     analyser.getByteFrequencyData(dataArray);
@@ -623,7 +640,6 @@
                     volume = sum / dataArray.length / 255;
                 }
 
-                // Apply to mouth parameter
                 try {
                     const mouthParam = model.internalModel.coreModel.getParameterIndex('ParamMouthOpenY');
                     if (mouthParam >= 0) {
@@ -635,7 +651,7 @@
                 } catch (err) {
                     console.error('Lip sync error:', err);
                 }
-            }, 1000 / 30); // 30 FPS
+            }, 1000 / 30);
         }
 
         function stopLipSync() {
@@ -644,7 +660,6 @@
                 lipSyncInterval = null;
             }
 
-            // Reset mouth
             if (model && model.internalModel) {
                 try {
                     model.internalModel.coreModel.setParameterValueById('ParamMouthOpenY', 0);
@@ -654,15 +669,13 @@
             }
         }
 
-        // Test lip sync with dummy audio
         function initTestLipSync() {
             const testBtn = document.getElementById('test-lipsync');
             
             testBtn.addEventListener('click', () => {
                 console.log('Testing lip sync...');
                 
-                // Create a test pattern
-                const testDuration = 3000; // 3 seconds
+                const testDuration = 3000;
                 const startTime = Date.now();
                 
                 lipSyncInterval = setInterval(() => {
@@ -673,11 +686,9 @@
                         return;
                     }
 
-                    // Create a talking pattern (sine wave)
                     const t = elapsed / 1000;
                     const mouthValue = Math.abs(Math.sin(t * 10)) * 0.8;
 
-                    // Apply to mouth parameter
                     try {
                         if (model && model.internalModel) {
                             model.internalModel.coreModel.setParameterValueById(
@@ -688,11 +699,10 @@
                     } catch (err) {
                         console.error('Lip sync test error:', err);
                     }
-                }, 1000 / 30); // 30 FPS
+                }, 1000 / 30);
             });
         }
 
-        // Character selector setup
         function initCharacterSelector() {
             const toggleBtn = document.getElementById('character-toggle');
             const characterMenu = document.getElementById('character-menu');
@@ -707,12 +717,10 @@
             const positionDisplay = document.getElementById('position-display');
             const togglePositionDisplay = document.getElementById('toggle-position-display');
             
-            // Position display elements
             const posScale = document.getElementById('pos-scale');
             const posX = document.getElementById('pos-x');
             const posY = document.getElementById('pos-y');
             
-            // Update model when sliders change
             function updateModel() {
                 if (!model) return;
                 
@@ -724,12 +732,10 @@
                 model.x = app.screen.width / 2 + (x * app.screen.width / 2);
                 model.y = app.screen.height / 2 + (y * app.screen.height / 2);
                 
-                // Update display values
                 scaleValue.textContent = scale.toFixed(2);
                 xValue.textContent = x.toFixed(2);
                 yValue.textContent = y.toFixed(2);
                 
-                // Update position display overlay
                 posScale.textContent = scale.toFixed(2);
                 posX.textContent = x.toFixed(2);
                 posY.textContent = y.toFixed(2);
@@ -739,7 +745,6 @@
             xSlider.addEventListener('input', updateModel);
             ySlider.addEventListener('input', updateModel);
             
-            // Show position display when menu is open or checkbox is checked
             toggleBtn.addEventListener('click', () => {
                 if (characterMenu.classList.contains('open')) {
                     positionDisplay.style.display = 'none';
@@ -756,7 +761,6 @@
                 }
             });
             
-            // Copy config button
             copyBtn.addEventListener('click', () => {
                 const config = `{
     name: '${currentCharacter.name}',
@@ -779,11 +783,9 @@
                 });
             });
             
-            // Update sliders when character changes
             function updateSliders(character) {
                 const isMobile = window.innerWidth < 768;
                 
-                // Use mobile values if available (on mobile), otherwise use desktop values
                 const scale = (isMobile && character.scaleMobile !== undefined) ? character.scaleMobile : character.scale;
                 const position = (isMobile && character.positionMobile) ? character.positionMobile : character.position;
                 
@@ -794,7 +796,6 @@
                 updateModel();
             }
 
-            // Populate character list
             CHARACTERS.forEach((char, index) => {
                 const item = document.createElement('div');
                 item.className = 'character-item';
@@ -806,48 +807,38 @@
                 `;
                 
                 item.addEventListener('click', () => {
-                    // Update active state
                     document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
                     item.classList.add('active');
                     
-                    // Load character
                     loadLive2DModel(char).then(() => {
                         updateSliders(char);
                     });
                     
-                    // Close menu
                     characterMenu.classList.remove('open');
                 });
                 
                 characterList.appendChild(item);
             });
             
-            // Initialize sliders with first character
             if (CHARACTERS.length > 0) {
                 updateSliders(CHARACTERS[0]);
             }
 
-            // Desktop: Toggle menu with button
             toggleBtn.addEventListener('click', (e) => {
-                e.stopPropagation(); // Prevent this from triggering the close handler
+                e.stopPropagation();
                 characterMenu.classList.toggle('open');
             });
 
-            // Prevent menu clicks from closing the menu
             characterMenu.addEventListener('click', (e) => {
                 e.stopPropagation();
             });
 
-            // Mobile: Swipe from right edge to open menu
             let touchStartX = 0;
-            let touchStartY = 0;
             let isSwiping = false;
 
             document.addEventListener('touchstart', (e) => {
                 touchStartX = e.touches[0].clientX;
-                touchStartY = e.touches[0].clientY;
                 
-                // Detect if touch started from right edge (last 50px)
                 if (touchStartX > window.innerWidth - 50) {
                     isSwiping = true;
                 }
@@ -859,7 +850,6 @@
                 const touchX = e.touches[0].clientX;
                 const deltaX = touchStartX - touchX;
                 
-                // Swiping left (deltaX positive) opens the menu
                 if (deltaX > 50) {
                     characterMenu.classList.add('open');
                     isSwiping = false;
@@ -870,23 +860,19 @@
                 isSwiping = false;
             });
 
-            // Close menu when clicking outside (desktop)
             document.addEventListener('click', (e) => {
                 if (characterMenu.classList.contains('open')) {
                     characterMenu.classList.remove('open');
-                    // Only hide position display if not set to always visible
                     if (!togglePositionDisplay.checked) {
                         positionDisplay.style.display = 'none';
                     }
                 }
             });
 
-            // Close menu when tapping outside on mobile
             document.addEventListener('touchstart', (e) => {
                 if (!characterMenu.contains(e.target) && characterMenu.classList.contains('open')) {
                     e.stopPropagation();
                     characterMenu.classList.remove('open');
-                    // Only hide position display if not set to always visible
                     if (!togglePositionDisplay.checked) {
                         positionDisplay.style.display = 'none';
                     }
@@ -894,7 +880,6 @@
             });
         }
 
-        // WebSocket connection
         function connectWebSocket() {
             console.log(`Connecting to WebSocket: ${BACKEND_URL}/ws`);
             
@@ -910,17 +895,14 @@
                 console.log('Received:', data);
 
                 if (data.type === 'response') {
-                    // Display response in console for now
                     console.log('Assistant:', data.text);
                     
-                    // Request TTS
                     ws.send(JSON.stringify({
                         type: 'tts',
                         text: data.text,
                         voice: 'compa'
                     }));
                 } else if (data.type === 'audio') {
-                    // Play audio and trigger lip sync
                     playAudioWithLipSync(data.data);
                 }
             };
@@ -932,7 +914,6 @@
             ws.onclose = () => {
                 console.log('WebSocket disconnected');
                 isConnected = false;
-                // Attempt reconnect after 3 seconds
                 setTimeout(connectWebSocket, 3000);
             };
         }
@@ -942,10 +923,7 @@
             
             audio.onloadedmetadata = () => {
                 const durationMs = audio.duration * 1000;
-                
-                // Setup audio analysis for real-time lip sync
                 setupAudioAnalysis(audio);
-                
                 startLipSync(durationMs);
             };
 
@@ -963,7 +941,6 @@
             };
         }
 
-        // Text input handler
         function initTextInput() {
             const textInput = document.getElementById('text-input');
             const speakBtn = document.getElementById('speak-btn');
@@ -988,7 +965,6 @@
             });
         }
 
-        // Initialize everything
         async function init() {
             console.log('🎭 Initializing Live2D system...');
             
@@ -997,17 +973,12 @@
             initTextInput();
             initTestLipSync();
             
-            // Load default character
             await loadLive2DModel(CHARACTERS[0]);
             
-            // Connect to backend
             connectWebSocket();
             
             console.log('✅ System ready!');
         }
-
-        // Start the app
-        init();
     </script>
 </body>
 </html>

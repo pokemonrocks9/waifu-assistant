@@ -8,8 +8,27 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎭</text></svg>">
-    <title>AI Assistant Pod - Live2D</title>
+    <title>Compa — Pod Interface</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --void: #05070d;
+            --void-2: #0a0e1a;
+            --panel: rgba(12, 18, 32, 0.72);
+            --panel-solid: #0c1220;
+            --hairline: rgba(103, 232, 249, 0.16);
+            --cyan: #67e8f9;
+            --cyan-dim: rgba(103, 232, 249, 0.5);
+            --magenta: #f472b6;
+            --text: #e8f4f8;
+            --text-dim: rgba(232, 244, 248, 0.56);
+            --danger: #fb7185;
+            --font-display: 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -17,12 +36,29 @@
         }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            font-family: var(--font-display);
+            background: radial-gradient(ellipse 120% 80% at 50% 15%, #131b2e 0%, var(--void-2) 45%, var(--void) 100%);
+            color: var(--text);
             overflow: hidden;
             position: fixed;
             width: 100%;
             height: 100%;
+        }
+
+        /* Ambient scan-line texture — the pod's projection field */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+            background: repeating-linear-gradient(
+                to bottom,
+                rgba(103, 232, 249, 0.015) 0px,
+                rgba(103, 232, 249, 0.015) 1px,
+                transparent 1px,
+                transparent 3px
+            );
         }
 
         #canvas-container {
@@ -32,10 +68,46 @@
             touch-action: none;
         }
 
+        /* Breathing glow behind the character, like a projector core */
+        #canvas-container::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: min(70vw, 640px);
+            height: min(70vw, 640px);
+            transform: translate(-50%, -55%);
+            background: radial-gradient(circle, rgba(103, 232, 249, 0.10) 0%, rgba(244, 114, 182, 0.05) 45%, transparent 72%);
+            animation: pulse-core 5s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        @keyframes pulse-core {
+            0%, 100% { opacity: 0.7; transform: translate(-50%, -55%) scale(1); }
+            50% { opacity: 1; transform: translate(-50%, -55%) scale(1.05); }
+        }
+
+        /* HUD corner brackets framing the viewport */
+        .hud-corner {
+            position: fixed;
+            width: 28px;
+            height: 28px;
+            border: 2px solid var(--cyan-dim);
+            z-index: 5;
+            pointer-events: none;
+            opacity: 0.5;
+        }
+        .hud-corner.tl { top: 18px; left: 18px; border-right: none; border-bottom: none; }
+        .hud-corner.tr { top: 18px; right: 18px; border-left: none; border-bottom: none; }
+        .hud-corner.bl { bottom: 18px; left: 18px; border-right: none; border-top: none; }
+        .hud-corner.br { bottom: 18px; right: 18px; border-left: none; border-top: none; }
+
         #live2d-canvas {
             display: block;
             width: 100%;
             height: 100%;
+            position: relative;
+            z-index: 2;
         }
 
         #loading {
@@ -43,20 +115,23 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: white;
-            font-size: 20px;
+            color: var(--text);
+            font-size: 14px;
+            font-family: var(--font-mono);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
             text-align: center;
             z-index: 10;
         }
 
         .spinner {
-            border: 4px solid rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(103, 232, 249, 0.12);
             border-radius: 50%;
-            border-top: 4px solid #00d4ff;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 20px;
+            border-top: 2px solid var(--cyan);
+            width: 36px;
+            height: 36px;
+            animation: spin 0.9s linear infinite;
+            margin: 0 auto 18px;
         }
 
         @keyframes spin {
@@ -69,25 +144,27 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: #ff6b6b;
-            font-size: 18px;
+            color: var(--danger);
+            font-family: var(--font-mono);
+            font-size: 13px;
             text-align: center;
             z-index: 10;
             display: none;
-            padding: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            border-radius: 10px;
+            padding: 18px 22px;
+            background: var(--panel-solid);
+            border: 1px solid rgba(251, 113, 133, 0.35);
+            border-radius: 4px;
             max-width: 80%;
         }
 
-        /* Text input for testing */
+        /* Message input dock */
         #text-input-container {
             position: fixed;
-            bottom: 20px;
+            bottom: 24px;
             left: 50%;
             transform: translateX(-50%);
-            width: 90%;
-            max-width: 600px;
+            width: 92%;
+            max-width: 560px;
             display: flex;
             gap: 10px;
             z-index: 10;
@@ -95,67 +172,76 @@
 
         #text-input {
             flex: 1;
-            background: rgba(20, 20, 40, 0.95);
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 25px;
-            padding: 15px 20px;
-            color: white;
-            font-size: 16px;
+            background: var(--panel);
+            border: 1px solid var(--hairline);
+            border-radius: 8px;
+            padding: 14px 18px;
+            color: var(--text);
+            font-family: var(--font-display);
+            font-size: 15px;
             outline: none;
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(16px);
+            transition: border-color 0.2s;
+        }
+
+        #text-input::placeholder {
+            color: var(--text-dim);
         }
 
         #text-input:focus {
-            border-color: #00d4ff;
+            border-color: var(--cyan-dim);
         }
 
         #speak-btn {
-            background: rgba(0, 212, 255, 0.8);
+            background: var(--cyan);
             border: none;
-            border-radius: 25px;
-            padding: 15px 30px;
-            color: white;
-            font-size: 16px;
-            font-weight: bold;
+            border-radius: 8px;
+            padding: 14px 26px;
+            color: var(--void);
+            font-family: var(--font-display);
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.2s;
         }
 
         #speak-btn:hover {
-            background: rgba(0, 212, 255, 1);
-            transform: scale(1.05);
+            background: #8ff0ff;
+            transform: translateY(-1px);
         }
 
         #speak-btn.speaking {
-            background: rgba(255, 100, 100, 0.8);
+            background: var(--magenta);
+            color: var(--void);
         }
 
-        /* Character selector - Desktop only */
+        /* Character selector toggle - Desktop only */
         #character-toggle {
             position: fixed;
             top: 20px;
             right: 20px;
-            background: rgba(0, 212, 255, 0.8);
-            border: none;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            color: white;
-            font-size: 24px;
+            background: var(--panel);
+            border: 1px solid var(--hairline);
+            border-radius: 8px;
+            width: 44px;
+            height: 44px;
+            color: var(--cyan);
+            font-size: 18px;
             cursor: pointer;
             z-index: 101;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.3s;
+            backdrop-filter: blur(16px);
+            transition: all 0.2s;
         }
 
         #character-toggle:hover {
-            background: rgba(0, 212, 255, 1);
-            transform: scale(1.1);
+            border-color: var(--cyan-dim);
+            background: rgba(103, 232, 249, 0.08);
         }
 
-        /* Hide toggle button on mobile - use swipe instead */
         @media (max-width: 768px) {
             #character-toggle {
                 display: none;
@@ -168,13 +254,13 @@
             top: 0;
             width: 300px;
             height: 100%;
-            background: rgba(20, 20, 40, 0.95);
-            backdrop-filter: blur(10px);
-            transition: right 0.3s ease;
+            background: rgba(8, 12, 22, 0.94);
+            border-left: 1px solid var(--hairline);
+            backdrop-filter: blur(20px);
+            transition: right 0.35s cubic-bezier(0.16, 1, 0.3, 1);
             z-index: 100;
             overflow-y: auto;
-            padding: 20px;
-            box-shadow: -5px 0 20px rgba(0, 0, 0, 0.5);
+            padding: 24px 20px;
         }
 
         #character-menu.open {
@@ -182,36 +268,43 @@
         }
 
         #character-menu h2 {
-            color: #00d4ff;
+            color: var(--text);
+            font-size: 13px;
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
             margin: 0 0 20px 0;
-            font-size: 24px;
-            text-align: center;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--hairline);
         }
 
         /* Live editing controls */
         #edit-controls {
-            background: rgba(0, 0, 0, 0.5);
-            border: 2px solid rgba(0, 212, 255, 0.5);
-            border-radius: 10px;
-            padding: 15px;
+            background: rgba(103, 232, 249, 0.04);
+            border: 1px solid var(--hairline);
+            border-radius: 6px;
+            padding: 16px;
             margin-bottom: 20px;
         }
 
         #edit-controls h3 {
-            color: #00d4ff;
-            font-size: 16px;
-            margin: 0 0 10px 0;
+            color: var(--cyan);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin: 0 0 14px 0;
         }
 
         .control-group {
-            margin-bottom: 12px;
+            margin-bottom: 14px;
         }
 
         .control-group label {
             display: block;
-            color: rgba(255, 255, 255, 0.9);
-            font-size: 12px;
-            margin-bottom: 5px;
+            color: var(--text-dim);
+            font-size: 11px;
+            margin-bottom: 6px;
         }
 
         .control-row {
@@ -222,9 +315,9 @@
 
         .control-row input[type="range"] {
             flex: 1;
-            height: 6px;
-            border-radius: 3px;
-            background: rgba(255, 255, 255, 0.2);
+            height: 3px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.12);
             outline: none;
             -webkit-appearance: none;
         }
@@ -232,124 +325,141 @@
         .control-row input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 16px;
-            height: 16px;
+            width: 13px;
+            height: 13px;
             border-radius: 50%;
-            background: #00d4ff;
+            background: var(--cyan);
             cursor: pointer;
+            box-shadow: 0 0 8px rgba(103, 232, 249, 0.5);
         }
 
         .control-row input[type="range"]::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
+            width: 13px;
+            height: 13px;
             border-radius: 50%;
-            background: #00d4ff;
+            background: var(--cyan);
             cursor: pointer;
             border: none;
+            box-shadow: 0 0 8px rgba(103, 232, 249, 0.5);
         }
 
         .control-row span {
-            color: #00d4ff;
-            font-size: 12px;
-            min-width: 50px;
+            color: var(--cyan);
+            font-size: 11px;
+            min-width: 46px;
             text-align: right;
-            font-family: monospace;
+            font-family: var(--font-mono);
         }
 
         .control-buttons {
             display: flex;
             gap: 8px;
-            margin-top: 10px;
+            margin-top: 12px;
         }
 
         .control-buttons button {
             flex: 1;
-            padding: 8px;
-            border: none;
+            padding: 9px;
+            border: 1px solid transparent;
             border-radius: 5px;
+            font-family: var(--font-display);
             font-size: 11px;
+            font-weight: 500;
             cursor: pointer;
             transition: all 0.2s;
         }
 
         .btn-reset {
-            background: rgba(255, 100, 100, 0.8);
-            color: white;
+            background: rgba(251, 113, 133, 0.12);
+            border-color: rgba(251, 113, 133, 0.3);
+            color: var(--danger);
         }
 
         .btn-reset:hover {
-            background: rgba(255, 100, 100, 1);
+            background: rgba(251, 113, 133, 0.2);
         }
 
         .btn-copy {
-            background: rgba(0, 212, 255, 0.8);
-            color: white;
+            background: rgba(103, 232, 249, 0.12);
+            border-color: var(--hairline);
+            color: var(--cyan);
         }
 
         .btn-copy:hover {
-            background: rgba(0, 212, 255, 1);
+            background: rgba(103, 232, 249, 0.2);
         }
 
         .character-item {
-            background: rgba(255, 255, 255, 0.1);
-            border: 2px solid rgba(255, 255, 255, 0.2);
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 15px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--hairline);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 10px;
             cursor: pointer;
             transition: all 0.2s;
         }
 
         .character-item:hover {
-            background: rgba(255, 255, 255, 0.2);
-            border-color: #00d4ff;
-            transform: translateX(-5px);
+            background: rgba(103, 232, 249, 0.06);
+            border-color: var(--cyan-dim);
         }
 
         .character-item.active {
-            background: rgba(0, 212, 255, 0.3);
-            border-color: #00d4ff;
+            background: rgba(103, 232, 249, 0.1);
+            border-color: var(--cyan);
         }
 
         .character-name {
-            color: white;
-            font-size: 16px;
-            font-weight: bold;
-            margin-bottom: 5px;
+            color: var(--text);
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
         }
 
         .character-desc {
-            color: rgba(255, 255, 255, 0.7);
-            font-size: 12px;
+            color: var(--text-dim);
+            font-size: 11px;
         }
 
         #status-info {
             position: fixed;
             top: 20px;
             left: 20px;
-            background: rgba(0, 0, 0, 0.7);
-            padding: 10px 15px;
-            border-radius: 10px;
-            color: white;
-            font-size: 12px;
+            background: var(--panel);
+            border: 1px solid var(--hairline);
+            padding: 10px 14px;
+            border-radius: 8px;
+            color: var(--text);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            letter-spacing: 0.02em;
             z-index: 10;
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(16px);
+        }
+
+        #status-info div:first-child {
+            color: var(--cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 10px;
+            margin-bottom: 4px;
         }
 
         /* Position/Scale display at bottom */
         #position-display {
             position: fixed;
-            bottom: 80px;
+            bottom: 84px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.85);
-            padding: 8px 15px;
-            border-radius: 8px;
-            color: #00d4ff;
+            background: var(--panel-solid);
+            border: 1px solid var(--hairline);
+            padding: 8px 14px;
+            border-radius: 6px;
+            color: var(--cyan);
             font-size: 11px;
-            font-family: monospace;
+            font-family: var(--font-mono);
             z-index: 10;
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(16px);
             display: none;
             white-space: pre;
         }
@@ -360,28 +470,31 @@
 
         /* Settings toggle section */
         .settings-section {
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 15px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--hairline);
+            border-radius: 6px;
+            padding: 14px;
+            margin-bottom: 16px;
         }
 
         .settings-section h3 {
-            color: #00d4ff;
-            font-size: 14px;
-            margin: 0 0 10px 0;
+            color: var(--cyan);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin: 0 0 12px 0;
         }
 
         .toggle-option {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
         }
 
         .toggle-option label {
-            color: rgba(255, 255, 255, 0.9);
+            color: var(--text-dim);
             font-size: 12px;
             flex: 1;
         }
@@ -389,8 +502,8 @@
         /* Toggle switch */
         .toggle-switch {
             position: relative;
-            width: 44px;
-            height: 24px;
+            width: 40px;
+            height: 22px;
             cursor: pointer;
         }
 
@@ -406,29 +519,30 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: rgba(255, 255, 255, 0.2);
-            border-radius: 24px;
-            transition: 0.3s;
+            background-color: rgba(255, 255, 255, 0.12);
+            border-radius: 22px;
+            transition: 0.25s;
         }
 
         .toggle-slider:before {
             position: absolute;
             content: "";
-            height: 18px;
-            width: 18px;
+            height: 16px;
+            width: 16px;
             left: 3px;
             bottom: 3px;
-            background-color: white;
+            background-color: var(--text);
             border-radius: 50%;
-            transition: 0.3s;
+            transition: 0.25s;
         }
 
         .toggle-switch input:checked + .toggle-slider {
-            background-color: #00d4ff;
+            background-color: var(--cyan);
         }
 
         .toggle-switch input:checked + .toggle-slider:before {
-            transform: translateX(20px);
+            transform: translateX(18px);
+            background-color: var(--void);
         }
 
         /* Hide edit controls when toggled off */
@@ -439,23 +553,25 @@
         /* Test lip sync button */
         #test-lipsync {
             position: fixed;
-            top: 80px;
+            top: 74px;
             left: 20px;
-            background: rgba(255, 100, 100, 0.7);
-            border: none;
-            border-radius: 10px;
-            padding: 10px 15px;
-            color: white;
-            font-size: 12px;
+            background: var(--panel);
+            border: 1px solid rgba(244, 114, 182, 0.3);
+            border-radius: 8px;
+            padding: 9px 14px;
+            color: var(--magenta);
+            font-family: var(--font-display);
+            font-size: 11px;
+            font-weight: 500;
             cursor: pointer;
             z-index: 10;
-            backdrop-filter: blur(10px);
+            backdrop-filter: blur(16px);
             transition: all 0.2s;
         }
 
         #test-lipsync:hover {
-            background: rgba(255, 100, 100, 0.9);
-            transform: scale(1.05);
+            background: rgba(244, 114, 182, 0.1);
+            border-color: var(--magenta);
         }
 
         @media (max-width: 768px) {
@@ -463,40 +579,52 @@
                 display: none; /* Hide on mobile */
             }
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            #canvas-container::before,
+            .spinner {
+                animation: none;
+            }
+        }
     </style>
 </head>
 <body>
+    <div class="hud-corner tl"></div>
+    <div class="hud-corner tr"></div>
+    <div class="hud-corner bl"></div>
+    <div class="hud-corner br"></div>
+
     <div id="canvas-container">
         <canvas id="live2d-canvas"></canvas>
     </div>
 
     <div id="loading">
         <div class="spinner"></div>
-        <div>Loading Live2D model...</div>
+        <div>Initializing hologram</div>
     </div>
 
     <div id="error"></div>
 
     <div id="status-info">
-        <div>🎭 Live2D System</div>
+        <div>Pod link</div>
         <div id="model-status">No model loaded</div>
     </div>
 
-    <button id="test-lipsync">🗣️ Test Lip Sync</button>
+    <button id="test-lipsync">Test voice sync</button>
 
     <!-- Character selector toggle button -->
-    <button id="character-toggle">👤</button>
+    <button id="character-toggle">☰</button>
 
     <!-- Character selection menu -->
     <div id="character-menu">
-        <h2>Select Character</h2>
+        <h2>Select character</h2>
         
         <!-- Settings Section -->
         <div class="settings-section">
-            <h3>⚙️ Settings</h3>
+            <h3>Settings</h3>
             
             <div class="toggle-option">
-                <label>Show Position Controls</label>
+                <label>Show position controls</label>
                 <label class="toggle-switch">
                     <input type="checkbox" id="toggle-edit-controls" checked>
                     <span class="toggle-slider"></span>
@@ -504,7 +632,7 @@
             </div>
             
             <div class="toggle-option">
-                <label>Always Show Position Display</label>
+                <label>Always show position readout</label>
                 <label class="toggle-switch">
                     <input type="checkbox" id="toggle-position-display">
                     <span class="toggle-slider"></span>
@@ -514,10 +642,10 @@
         
         <!-- Live editing controls -->
         <div id="edit-controls">
-            <h3>🎨 Adjust Position & Scale</h3>
+            <h3>Position &amp; scale</h3>
             
             <div class="control-group">
-                <label>Base Scale</label>
+                <label>Base scale</label>
                 <div class="control-row">
                     <input type="range" id="scale-slider" min="0.05" max="0.5" step="0.01" value="0.15">
                     <span id="scale-value">0.15</span>
@@ -525,7 +653,7 @@
             </div>
             
             <div class="control-group">
-                <label>Position X (Left ← → Right)</label>
+                <label>Position X (left ← → right)</label>
                 <div class="control-row">
                     <input type="range" id="x-slider" min="-0.3" max="0.3" step="0.01" value="0">
                     <span id="x-value">0.00</span>
@@ -533,7 +661,7 @@
             </div>
             
             <div class="control-group">
-                <label>Position Y (Up ↑ ↓ Down)</label>
+                <label>Position Y (up ↑ ↓ down)</label>
                 <div class="control-row">
                     <input type="range" id="y-slider" min="-0.3" max="0.3" step="0.01" value="0.1">
                     <span id="y-value">0.10</span>
@@ -542,7 +670,7 @@
             
             <div class="control-buttons">
                 <button class="btn-reset" id="reset-btn">Reset</button>
-                <button class="btn-copy" id="copy-btn">Copy Config</button>
+                <button class="btn-copy" id="copy-btn">Copy config</button>
             </div>
         </div>
         
@@ -553,9 +681,9 @@
 
     <div id="position-display"></div>
 
-    <!-- Temporary text input for testing -->
+    <!-- Text input -->
     <div id="text-input-container">
-        <input type="text" id="text-input" placeholder="Type a message to test lip-sync...">
+        <input type="text" id="text-input" placeholder="Say something to Compa…">
         <button id="speak-btn">Send</button>
     </div>
 

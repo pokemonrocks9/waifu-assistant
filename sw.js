@@ -1,9 +1,13 @@
-// Service Worker for AI Assistant Pod PWA
-const CACHE_NAME = 'ai-assistant-pod-v40';
+// Service Worker for Compa PWA
+// Bump this version number on every deploy to force clients to pick up new files
+const SW_VERSION = 'v0.1.0';
+const CACHE_NAME = `compa-pod-${SW_VERSION}`;
 const urlsToCache = [
   './',
   './index.html',
-  './manifest.json'
+  './manifest.json',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 // Install event - cache core files
@@ -20,13 +24,19 @@ self.addEventListener('install', (event) => {
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
-  // Skip caching for chrome-extension, chrome://, data:, blob: URLs
   const url = event.request.url;
-  if (url.startsWith('chrome-extension://') || 
-      url.startsWith('chrome://') || 
-      url.startsWith('data:') || 
+
+  // Skip caching for chrome-extension, chrome://, data:, blob: URLs
+  if (url.startsWith('chrome-extension://') ||
+      url.startsWith('chrome://') ||
+      url.startsWith('data:') ||
       url.startsWith('blob:')) {
-    return; // Let browser handle these
+    return;
+  }
+
+  // Never cache the WebSocket connection or API calls - always go live
+  if (url.includes('/ws') || url.includes('/api/')) {
+    return;
   }
 
   // Only cache http and https requests
@@ -37,26 +47,21 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
-        // Cache hit - return response
         if (response) {
           return response;
         }
 
-        // Clone the request
         const fetchRequest = event.request.clone();
 
         return fetch(fetchRequest).then((response) => {
-          // Check if valid response
           if (!response || response.status !== 200 || response.type !== 'basic') {
             return response;
           }
 
-          // Clone the response
           const responseToCache = response.clone();
 
           caches.open(CACHE_NAME)
             .then((cache) => {
-              // Additional check before caching
               if (event.request.url.startsWith('http')) {
                 cache.put(event.request, responseToCache).catch((err) => {
                   console.log('Cache put failed:', err);

@@ -1,12 +1,12 @@
 {
-  "name": "AI Assistant Pod",
-  "short_name": "AI Pod",
-  "description": "Virtual AI assistant with VRM character display",
+  "name": "Compa - Pod Interface",
+  "short_name": "Compa",
+  "description": "Compa, your holographic AI companion",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#1a1a2e",
-  "theme_color": "#1a1a2e",
+  "background_color": "#05070d",
+  "theme_color": "#05070d",
   "orientation": "portrait-primary",
   "icons": [
     {

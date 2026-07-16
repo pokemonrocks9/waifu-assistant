@@ -916,9 +916,29 @@
 
                     if (expressionName) {
                         try {
-                            currentModel.expression(parseInt(expressionName, 10));
+                            const idx = parseInt(expressionName, 10);
+                            currentModel.expression(idx);
                             btn.classList.add('active');
                             console.log(`Expression set: ${expressionName}`);
+
+                            // Debug: check if the parameter values actually landed on the model
+                            setTimeout(() => {
+                                try {
+                                    const core = currentModel.internalModel.coreModel;
+                                    const paramIds = ['laughter', 'anger_', 'sad_', 'surprise', 'eye_close', 'crying_', 'pokan_', 'eyeclose_deform'];
+                                    const values = {};
+                                    paramIds.forEach(id => {
+                                        try {
+                                            values[id] = core.getParameterValueById(id);
+                                        } catch (e) {
+                                            values[id] = 'not found';
+                                        }
+                                    });
+                                    console.log('Current parameter values:', values);
+                                } catch (e) {
+                                    console.warn('Could not read parameter values for debug:', e);
+                                }
+                            }, 100);
                         } catch (err) {
                             console.error(`Failed to set expression "${expressionName}":`, err);
                         }

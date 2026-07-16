@@ -1554,13 +1554,17 @@
                 startLipSync(durationMs);
             };
 
-            audio.play().catch(err => {
-                console.error('Audio playback error:', err);
-            });
-
             const speakBtn = document.getElementById('speak-btn');
-            speakBtn.classList.add('speaking');
-            speakBtn.textContent = '🔊';
+
+            audio.play().then(() => {
+                speakBtn.classList.add('speaking');
+                speakBtn.textContent = '🔊';
+            }).catch(err => {
+                console.warn('Audio playback blocked (likely browser autoplay restriction):', err);
+                // Don't leave the button stuck showing "speaking" if playback never started
+                speakBtn.classList.remove('speaking');
+                speakBtn.textContent = 'Send';
+            });
 
             audio.onended = () => {
                 speakBtn.classList.remove('speaking');

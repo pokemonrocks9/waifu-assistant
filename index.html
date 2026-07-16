@@ -510,6 +510,10 @@
             cursor: pointer;
         }
 
+        .toggle-option .toggle-switch {
+            flex: none;
+        }
+
         .toggle-switch input {
             opacity: 0;
             width: 0;
@@ -725,16 +729,16 @@
             <h3>Emotions (testing)</h3>
             <p class="form-hint mb-2">Click each to see what it looks like, then let me know which is which.</p>
             <div id="expression-buttons" class="flex-row flex-wrap gap-2">
-                <button class="btn secondary" data-expression="exp_01">exp_01</button>
-                <button class="btn secondary" data-expression="exp_02">exp_02</button>
-                <button class="btn secondary" data-expression="exp_03">exp_03</button>
-                <button class="btn secondary" data-expression="exp_04">exp_04</button>
-                <button class="btn secondary" data-expression="exp_05">exp_05</button>
-                <button class="btn secondary" data-expression="exp_06">exp_06</button>
-                <button class="btn secondary" data-expression="exp_07">exp_07</button>
-                <button class="btn secondary" data-expression="exp_08">exp_08</button>
-                <button class="btn secondary" data-expression="exp_12">exp_12</button>
-                <button class="btn secondary" data-expression="exp_13">exp_13</button>
+                <button class="btn secondary" data-expression="0">exp_01</button>
+                <button class="btn secondary" data-expression="1">exp_02</button>
+                <button class="btn secondary" data-expression="2">exp_03</button>
+                <button class="btn secondary" data-expression="3">exp_04</button>
+                <button class="btn secondary" data-expression="4">exp_05</button>
+                <button class="btn secondary" data-expression="5">exp_06</button>
+                <button class="btn secondary" data-expression="6">exp_07</button>
+                <button class="btn secondary" data-expression="7">exp_08</button>
+                <button class="btn secondary" data-expression="8">exp_12</button>
+                <button class="btn secondary" data-expression="9">exp_13</button>
                 <button class="btn ghost" data-expression="">Reset to default</button>
             </div>
         </div>
@@ -912,7 +916,7 @@
 
                     if (expressionName) {
                         try {
-                            currentModel.expression(expressionName);
+                            currentModel.expression(parseInt(expressionName, 10));
                             btn.classList.add('active');
                             console.log(`Expression set: ${expressionName}`);
                         } catch (err) {

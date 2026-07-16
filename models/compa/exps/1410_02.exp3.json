@@ -4,9 +4,9 @@
   "FadeOutTime": 1056965000,
   "Parameters": [
     {
-      "ID": "laughter",
       "Value": 1,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "laughter"
     }
   ]
 }

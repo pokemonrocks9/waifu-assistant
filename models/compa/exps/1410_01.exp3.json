@@ -1,7 +1,7 @@
 {
   "Type": "Live2D Expression",
-  "FadeInTime": 0,
-  "FadeOutTime": 0,
+  "FadeInTime": 0.25,
+  "FadeOutTime": 0.25,
   "Parameters": [
     {
       "Value": 0,

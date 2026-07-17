@@ -4,7 +4,7 @@
   "FadeOutTime": 0.25,
   "Parameters": [
     {
-      "ID": "anger_",
+      "Id": "anger_",
       "Value": 1,
       "Blend": "Add"
     }

@@ -4,64 +4,64 @@
   "FadeOutTime": 0.25,
   "Parameters": [
     {
-      "ID": "ParamEyeROpen",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "ParamEyeROpen"
     },
     {
-      "ID": "ParamEyeLOpen",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "ParamEyeLOpen"
     },
     {
-      "ID": "ParamMouthForm",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "ParamMouthForm"
     },
     {
-      "ID": "tele_laugh",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "tele_laugh"
     },
     {
-      "ID": "laughter",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "laughter"
     },
     {
-      "ID": "anger_",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "anger_"
     },
     {
-      "ID": "sad_",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "sad_"
     },
     {
-      "ID": "surprise",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "surprise"
     },
     {
-      "ID": "eye_close",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "eye_close"
     },
     {
-      "ID": "crying_",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "crying_"
     },
     {
-      "ID": "pokan_",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "pokan_"
     },
     {
-      "ID": "eyeclose_deform",
       "Value": 1,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "eyeclose_deform"
     }
   ]
 }

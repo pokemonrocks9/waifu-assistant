@@ -44,6 +44,7 @@
             overflow: hidden;
             position: fixed;
             width: 100%;
+            height: 100%;
             top: 0;
             left: 0;
         }
@@ -58,7 +59,7 @@
             height: 100%;
             top: 0;
             left: 0;
-            height: var(--app-height, 100%);
+            height: var(--app-height, 100vh);
             overscroll-behavior: none;
         }
 
@@ -80,7 +81,7 @@
 
         #canvas-container {
             width: 100%;
-            height: 100%;
+            height: var(--app-height, 100vh);
             position: relative;
             touch-action: none;
         }
@@ -1901,20 +1902,23 @@
                 document.documentElement.style.setProperty('--app-height', `${h}px`);
             }
 
+            // Capture initial height immediately
+            captureAppHeight();
+
             // pageshow fires reliably both on a fresh page load AND when returning
             // from background/another app (unlike load, which only fires once) -
             // this is the actual event underlying the "switch out and back" fix,
             // so listening to it directly is more robust than guessing with timers
             window.addEventListener('pageshow', () => {
-                requestAnimationFrame(() => requestAnimationFrame(captureAppHeight));
+                captureAppHeight();
             });
 
             function updateViewport() {
                 if (window.visualViewport) {
-                    // Kill the browser's attempt to scroll the background up.
-                    // Because the chat bar is 'fixed', it automatically stays above
-                    // the keyboard as the visual viewport shrinks.
-                    if (window.visualViewport.offsetTop > 0 || window.scrollY > 0) {
+                    // Kill the browser's attempt to pan/scroll the background up.
+                    // We do this by forcing the scroll position to zero whenever
+                    // the visual viewport changes (keyboard toggle/animation).
+                    if (window.scrollY !== 0 || (window.visualViewport.offsetTop > 0)) {
                         window.scrollTo(0, 0);
                     }
                 }
@@ -1924,6 +1928,13 @@
                 window.visualViewport.addEventListener('resize', updateViewport);
                 window.visualViewport.addEventListener('scroll', updateViewport);
             }
+
+            // Extra defense: browsers often try to scroll again after the focus event
+            textInput.addEventListener('focus', () => {
+                setTimeout(() => window.scrollTo(0, 0), 0);
+                setTimeout(() => window.scrollTo(0, 0), 100);
+                setTimeout(() => window.scrollTo(0, 0), 300);
+            });
 
             // Only update --app-height on genuine device rotation/window resize,
             // not on keyboard show/hide (detected by a significant width change)

@@ -27,19 +27,19 @@
     }
   },
   "HitAreas": [
-    { "Id": "head", "Name": "Head" },
-    { "Id": "face", "Name": "Face" },
-    { "Id": "hair_back", "Name": "HairBack" },
-    { "Id": "hand_L", "Name": "HandL" },
-    { "Id": "hand_R", "Name": "HandR" },
-    { "Id": "arm_L", "Name": "ArmL" },
-    { "Id": "arm_R", "Name": "ArmR" },
-    { "Id": "neck", "Name": "Neck" },
-    { "Id": "choker", "Name": "Choker" },
-    { "Id": "chest", "Name": "Chest" },
-    { "Id": "skirt", "Name": "Skirt" },
-    { "Id": "leg_L", "Name": "LegL" },
-    { "Id": "leg_R", "Name": "LegR" }
+    { "Id": "head", "Name": "head" },
+    { "Id": "face", "Name": "face" },
+    { "Id": "hair_back", "Name": "hair_back" },
+    { "Id": "hand_L", "Name": "hand_L" },
+    { "Id": "hand_R", "Name": "hand_R" },
+    { "Id": "arm_L", "Name": "arm_L" },
+    { "Id": "arm_R", "Name": "arm_R" },
+    { "Id": "neck", "Name": "neck" },
+    { "Id": "choker", "Name": "choker" },
+    { "Id": "chest", "Name": "chest" },
+    { "Id": "skirt", "Name": "skirt" },
+    { "Id": "leg_L", "Name": "leg_L" },
+    { "Id": "leg_R", "Name": "leg_R" }
   ],
   "Groups": [
     {

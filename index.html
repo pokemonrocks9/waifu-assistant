@@ -935,6 +935,14 @@
                                         }
                                     });
                                     console.log('Current parameter values:', values);
+
+                                    // Log the FULL real parameter list to check if these are actually valid parameters at all
+                                    const count = core.getParameterCount();
+                                    const allParams = [];
+                                    for (let i = 0; i < count; i++) {
+                                        allParams.push(core.getParameterId(i));
+                                    }
+                                    console.log(`Full parameter list (${count} total):`, allParams);
                                 } catch (e) {
                                     console.warn('Could not read parameter values for debug:', e);
                                 }

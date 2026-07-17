@@ -4,12 +4,12 @@
   "FadeOutTime": 0.25,
   "Parameters": [
     {
-      "ID": "ParamMouthForm",
+      "Id": "ParamMouthForm",
       "Value": 3,
       "Blend": "Add"
     },
     {
-      "ID": "tele_laugh",
+      "Id": "tele_laugh",
       "Value": 1,
       "Blend": "Add"
     }

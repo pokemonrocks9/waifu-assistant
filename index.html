@@ -943,11 +943,17 @@
                 autoDensity: true
             });
 
-            // Handle window resize
+            // Handle window resize - but ignore height-only changes from mobile keyboard
+            // open/close (Android fires a real window resize for this; we only want to
+            // react to genuine resizes/rotations, identified by width changing)
+            let lastRendererWidth = window.innerWidth;
             window.addEventListener('resize', () => {
-                app.renderer.resize(window.innerWidth, window.innerHeight);
-                if (currentModel) {
-                    positionModel(currentModel, currentCharacter);
+                if (window.innerWidth !== lastRendererWidth) {
+                    lastRendererWidth = window.innerWidth;
+                    app.renderer.resize(window.innerWidth, window.innerHeight);
+                    if (currentModel) {
+                        positionModel(currentModel, currentCharacter);
+                    }
                 }
             });
 
@@ -1858,30 +1864,38 @@
         }
 
         // Text input handler
-        // Keep the page pinned to the actual screen when the mobile keyboard opens -
-        // instead of letting the browser shift/reflow the whole fixed-position page
-        // (which drags the character off-screen), we track the real visible height
-        // and only float the chat bar up above the keyboard.
+        // Keep the character completely fixed in size/position when the mobile keyboard
+        // opens - it should look like the keyboard is overlaying on top of her, not like
+        // she's shrinking or the page is reflowing. --app-height is locked to the initial
+        // screen height and NEVER updated on keyboard open. Only the chat bar's floating
+        // offset responds to the keyboard, via --keyboard-offset.
         function setupViewportHandling() {
-            function updateViewport() {
-                const vh = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-                document.documentElement.style.setProperty('--app-height', `${vh}px`);
+            // Lock app height to the actual initial viewport size, once, permanently
+            const initialHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            document.documentElement.style.setProperty('--app-height', `${initialHeight}px`);
 
+            function updateKeyboardOffset() {
                 if (window.visualViewport) {
                     const keyboardOffset = window.innerHeight - (window.visualViewport.height + window.visualViewport.offsetTop);
                     document.documentElement.style.setProperty('--keyboard-offset', `${Math.max(0, keyboardOffset)}px`);
                 }
             }
 
-            updateViewport();
-
             if (window.visualViewport) {
-                window.visualViewport.addEventListener('resize', updateViewport);
-                window.visualViewport.addEventListener('scroll', updateViewport);
-            } else {
-                // Fallback for browsers without visualViewport support
-                window.addEventListener('resize', updateViewport);
+                window.visualViewport.addEventListener('resize', updateKeyboardOffset);
+                window.visualViewport.addEventListener('scroll', updateKeyboardOffset);
             }
+
+            // Only update --app-height on genuine device rotation/window resize,
+            // not on keyboard show/hide (detected by a significant width change)
+            let lastWidth = window.innerWidth;
+            window.addEventListener('resize', () => {
+                if (window.innerWidth !== lastWidth) {
+                    lastWidth = window.innerWidth;
+                    const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                    document.documentElement.style.setProperty('--app-height', `${h}px`);
+                }
+            });
         }
 
         function initTextInput() {

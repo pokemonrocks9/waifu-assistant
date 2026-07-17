@@ -105,21 +105,6 @@
             50% { opacity: 1; transform: translate(-50%, -55%) scale(1.05); }
         }
 
-        /* HUD corner brackets framing the viewport */
-        .hud-corner {
-            position: fixed;
-            width: 28px;
-            height: 28px;
-            border: 2px solid var(--cyan-dim);
-            z-index: 5;
-            pointer-events: none;
-            opacity: 0.5;
-        }
-        .hud-corner.tl { top: 18px; left: 18px; border-right: none; border-bottom: none; }
-        .hud-corner.tr { top: 18px; right: 18px; border-left: none; border-bottom: none; }
-        .hud-corner.bl { bottom: 18px; left: 18px; border-right: none; border-top: none; }
-        .hud-corner.br { bottom: 18px; right: 18px; border-left: none; border-top: none; }
-
         #live2d-canvas {
             display: block;
             width: 100%;
@@ -703,11 +688,6 @@
     </style>
 </head>
 <body>
-    <div class="hud-corner tl"></div>
-    <div class="hud-corner tr"></div>
-    <div class="hud-corner bl"></div>
-    <div class="hud-corner br"></div>
-
     <div id="canvas-container">
         <canvas id="live2d-canvas"></canvas>
     </div>
@@ -868,7 +848,7 @@
                 scale: 0.30,
                 scaleMobile: 0.24,
                 position: { x: 0.02, y: 0.24 },
-                positionMobile: { x: 0.13, y: 0.30 },
+                positionMobile: { x: 0.13, y: 0.23 },
                 isCustom: true
             },
             
@@ -1942,7 +1922,6 @@
                         const offset = vv.offsetTop;
                         const pinnedElements = [
                             document.getElementById('status-info'),
-                            ...document.querySelectorAll('.hud-corner.tl, .hud-corner.tr'),
                             document.getElementById('canvas-container')
                         ];
                         pinnedElements.forEach(el => {

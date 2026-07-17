@@ -2102,8 +2102,8 @@
             };
 
             currentModel.on('pointerdown', onPointerDown);
-            app.stage.on('pointerup', onPointerUp);
-            app.stage.on('pointerupoutside', onPointerUp);
+            currentModel.on('pointerup', onPointerUp);
+            currentModel.on('pointerupoutside', onPointerUp);
         }
 
         function playAudioWithLipSync(audioBase64) {

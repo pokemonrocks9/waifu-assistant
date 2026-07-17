@@ -178,7 +178,7 @@
         /* Message input dock */
         #text-input-container {
             position: fixed;
-            bottom: 24px;
+            bottom: calc(24px + var(--kb-height, 0px));
             left: 50%;
             transform: translateX(-50%);
             width: 92%;
@@ -186,6 +186,7 @@
             display: flex;
             gap: 10px;
             z-index: 10;
+            transition: bottom 0.1s ease-out;
         }
 
         #text-input {
@@ -720,7 +721,7 @@
     <div id="error"></div>
 
     <div id="status-info">
-        <div>Pod link</div>
+        <div>Pod link <span id="pod-version" style="opacity: 0.4; font-size: 9px; margin-left: 4px; font-family: var(--font-mono);"></span></div>
         <div id="model-status">No model loaded</div>
     </div>
 
@@ -1902,8 +1903,22 @@
                 document.documentElement.style.setProperty('--app-height', `${h}px`);
             }
 
+            async function fetchVersion() {
+                try {
+                    const response = await fetch('./sw.js');
+                    const text = await response.text();
+                    const match = text.match(/const SW_VERSION = '(.+?)'/);
+                    if (match && match[1]) {
+                        document.getElementById('pod-version').textContent = `[${match[1]}]`;
+                    }
+                } catch (e) {
+                    console.warn('Failed to fetch version from sw.js', e);
+                }
+            }
+
             // Capture initial height immediately
             captureAppHeight();
+            fetchVersion();
 
             // pageshow fires reliably both on a fresh page load AND when returning
             // from background/another app (unlike load, which only fires once) -
@@ -1915,10 +1930,26 @@
 
             function updateViewport() {
                 if (window.visualViewport) {
-                    // Kill the browser's attempt to pan/scroll the background up.
-                    // We do this by forcing the scroll position to zero whenever
-                    // the visual viewport changes (keyboard toggle/animation).
-                    if (window.scrollY !== 0 || (window.visualViewport.offsetTop > 0)) {
+                    const vv = window.visualViewport;
+                    
+                    // 1. Calculate how much the keyboard is pushing up
+                    const kbHeight = window.innerHeight - vv.height;
+                    document.documentElement.style.setProperty('--kb-height', `${Math.max(0, kbHeight - vv.offsetTop)}px`);
+
+                    // 2. Counteract the browser's 'pan' by shifting pinned elements down
+                    // This keeps the Pod Link and Character from sliding off the top
+                    const offset = vv.offsetTop;
+                    const pinnedElements = [
+                        document.getElementById('status-info'),
+                        ...document.querySelectorAll('.hud-corner.tl, .hud-corner.tr'),
+                        document.getElementById('canvas-container')
+                    ];
+                    pinnedElements.forEach(el => {
+                        if (el) el.style.transform = `translateY(${offset}px)`;
+                    });
+
+                    // 3. Keep layout locked at 0,0
+                    if (window.scrollY !== 0) {
                         window.scrollTo(0, 0);
                     }
                 }

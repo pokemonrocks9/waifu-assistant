@@ -26,6 +26,21 @@
       ]
     }
   },
+  "HitAreas": [
+    { "Id": "head", "Name": "Head" },
+    { "Id": "face", "Name": "Face" },
+    { "Id": "hair_back", "Name": "HairBack" },
+    { "Id": "hand_L", "Name": "HandL" },
+    { "Id": "hand_R", "Name": "HandR" },
+    { "Id": "arm_L", "Name": "ArmL" },
+    { "Id": "arm_R", "Name": "ArmR" },
+    { "Id": "neck", "Name": "Neck" },
+    { "Id": "choker", "Name": "Choker" },
+    { "Id": "chest", "Name": "Chest" },
+    { "Id": "skirt", "Name": "Skirt" },
+    { "Id": "leg_L", "Name": "LegL" },
+    { "Id": "leg_R", "Name": "LegR" }
+  ],
   "Groups": [
     {
       "Target": "Parameter",

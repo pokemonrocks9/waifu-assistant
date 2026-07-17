@@ -636,6 +636,17 @@
         .btn.ghost:hover {
             background: rgba(251, 113, 133, 0.08);
         }
+
+        .mt-2 { margin-top: 8px; }
+        .mb-2 { margin-bottom: 8px; }
+
+        .param-value {
+            color: var(--cyan);
+            font-size: 11px;
+            min-width: 42px;
+            text-align: right;
+            font-family: var(--font-mono);
+        }
     </style>
 </head>
 <body>
@@ -729,20 +740,36 @@
             <h3>Emotions (testing)</h3>
             <p class="form-hint mb-2">Click each to see what it looks like, then let me know which is which.</p>
             <div id="expression-buttons" class="flex-row flex-wrap gap-2">
-                <button class="btn secondary" data-expression="0">exp_01</button>
-                <button class="btn secondary" data-expression="1">exp_02</button>
-                <button class="btn secondary" data-expression="2">exp_03</button>
-                <button class="btn secondary" data-expression="3">exp_04</button>
-                <button class="btn secondary" data-expression="4">exp_05</button>
-                <button class="btn secondary" data-expression="5">exp_06</button>
-                <button class="btn secondary" data-expression="6">exp_07</button>
-                <button class="btn secondary" data-expression="7">exp_08</button>
-                <button class="btn secondary" data-expression="8">exp_12</button>
-                <button class="btn secondary" data-expression="9">exp_13</button>
+                <button class="btn secondary" data-expression="0">Neutral</button>
+                <button class="btn secondary" data-expression="1">Happy (eyes closed smile)</button>
+                <button class="btn secondary" data-expression="2">Angry</button>
+                <button class="btn secondary" data-expression="3">Sad</button>
+                <button class="btn secondary" data-expression="4">Sympathetic</button>
+                <button class="btn secondary" data-expression="5">Surprised (subtle)</button>
+                <button class="btn secondary" data-expression="6">Calm / Sleepy</button>
+                <button class="btn secondary" data-expression="7">Crying</button>
+                <button class="btn secondary" data-expression="8">Shocked (O-O)</button>
+                <button class="btn secondary" data-expression="9">Embarrassed (&gt;-&lt;)</button>
                 <button class="btn ghost" data-expression="">Reset to default</button>
             </div>
         </div>
         
+        <!-- Raw parameter testing panel - for exploring unlabeled params and building custom expressions -->
+        <div class="settings-section">
+            <div class="toggle-option" style="margin-bottom: 0;">
+                <label>Raw parameters (advanced)</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-raw-params">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div id="raw-params-panel" class="hidden" style="margin-top: 12px; max-height: 320px; overflow-y: auto;">
+                <p class="form-hint mb-2">Live parameter sliders. Move one to see what it controls, then use combinations to build custom expressions.</p>
+                <div id="raw-params-list"></div>
+                <button class="btn ghost mt-2" id="raw-params-reset" style="width: 100%;">Reset all to default</button>
+            </div>
+        </div>
+
         <div id="character-list">
             <!-- Characters will be populated here -->
         </div>
@@ -900,6 +927,76 @@
 
             console.log('PIXI initialized');
         }
+
+        function setupRawParameterPanel() {
+            if (!currentModel) return;
+
+            const core = currentModel.internalModel.coreModel;
+            const params = core._model?.parameters;
+            if (!params || !params.ids) {
+                console.warn('Could not access parameter list for raw panel');
+                return;
+            }
+
+            const listEl = document.getElementById('raw-params-list');
+            listEl.innerHTML = '';
+
+            const ids = params.ids;
+            const mins = params.minimumValues || [];
+            const maxs = params.maximumValues || [];
+            const defaults = params.defaultValues || [];
+
+            ids.forEach((id, i) => {
+                const min = mins[i] !== undefined ? mins[i] : -1;
+                const max = maxs[i] !== undefined ? maxs[i] : 1;
+                const def = defaults[i] !== undefined ? defaults[i] : 0;
+
+                const row = document.createElement('div');
+                row.className = 'control-group';
+                row.innerHTML = `
+                    <label>${id}</label>
+                    <div class="control-row">
+                        <input type="range" min="${min}" max="${max}" step="0.01" value="${def}" data-param-id="${id}">
+                        <span class="param-value">${def.toFixed(2)}</span>
+                    </div>
+                `;
+                listEl.appendChild(row);
+
+                const slider = row.querySelector('input[type="range"]');
+                const valueLabel = row.querySelector('.param-value');
+
+                slider.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    valueLabel.textContent = val.toFixed(2);
+                    try {
+                        core.setParameterValueById(id, val);
+                    } catch (err) {
+                        console.error(`Failed to set ${id}:`, err);
+                    }
+                });
+            });
+
+            document.getElementById('raw-params-reset').addEventListener('click', () => {
+                listEl.querySelectorAll('input[type="range"]').forEach((slider, i) => {
+                    const def = defaults[i] !== undefined ? defaults[i] : 0;
+                    slider.value = def;
+                    slider.dispatchEvent(new Event('input'));
+                });
+            });
+        }
+
+        // Toggle raw parameter panel visibility, building it lazily on first open
+        document.getElementById('toggle-raw-params').addEventListener('change', (e) => {
+            const panel = document.getElementById('raw-params-panel');
+            if (e.target.checked) {
+                panel.classList.remove('hidden');
+                if (document.getElementById('raw-params-list').children.length === 0) {
+                    setupRawParameterPanel();
+                }
+            } else {
+                panel.classList.add('hidden');
+            }
+        });
 
         function setupExpressionButtons() {
             const buttons = document.querySelectorAll('#expression-buttons button');
@@ -1607,6 +1704,35 @@
                 isConnected = true;
             };
 
+            // Maps emotion labels the LLM tags responses with to expression indices
+            const EMOTION_TO_EXPRESSION = {
+                neutral: 0,
+                happy: 1,
+                angry: 2,
+                sad: 3,
+                sympathetic: 4,
+                surprised: 5,
+                calm: 6,
+                crying: 7,
+                shocked: 8,
+                embarrassed: 9
+            };
+
+            function triggerEmotion(emotion) {
+                if (!currentModel) return;
+                const idx = EMOTION_TO_EXPRESSION[emotion];
+                if (idx === undefined) {
+                    console.warn(`Unknown emotion "${emotion}", skipping expression trigger`);
+                    return;
+                }
+                try {
+                    currentModel.expression(idx);
+                    console.log(`Emotion triggered: ${emotion} (expression ${idx})`);
+                } catch (err) {
+                    console.error(`Failed to trigger emotion "${emotion}":`, err);
+                }
+            }
+
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 console.log('Received:', data);
@@ -1614,6 +1740,11 @@
                 if (data.type === 'response') {
                     // Display response in console for now
                     console.log('Assistant:', data.text);
+
+                    // Trigger her expression to match the emotional tone of this reply
+                    if (data.emotion) {
+                        triggerEmotion(data.emotion);
+                    }
                     
                     // Request TTS
                     ws.send(JSON.stringify({

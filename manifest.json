@@ -1,7 +1,7 @@
 {
   "name": "Compa - Pod Interface",
   "short_name": "Compa",
-  "description": "Compa, your holographic AI companion",
+  "description": "Compa, your AI companion",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -10,13 +10,13 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "./icon-192.png",
+      "src": "./compa-icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "./icon-512.png",
+      "src": "./compa-icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

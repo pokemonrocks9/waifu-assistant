@@ -763,95 +763,120 @@
     <!-- Character selection menu -->
     <div id="character-menu">
         <h2>Select character</h2>
-        
+
         <!-- Settings Section -->
         <div class="settings-section">
             <h3>Settings</h3>
-            
+
             <div class="toggle-option">
-                <label>Show position controls</label>
+                <label>Mic always on</label>
                 <label class="toggle-switch">
-                    <input type="checkbox" id="toggle-edit-controls" checked>
+                    <input type="checkbox" id="toggle-mic-always-on">
                     <span class="toggle-slider"></span>
                 </label>
             </div>
-            
-            <div class="toggle-option">
-                <label>Always show position readout</label>
-                <label class="toggle-switch">
-                    <input type="checkbox" id="toggle-position-display">
-                    <span class="toggle-slider"></span>
-                </label>
-            </div>
-        </div>
-        
-        <!-- Live editing controls -->
-        <div id="edit-controls">
-            <h3>Position &amp; scale</h3>
-            
-            <div class="control-group">
-                <label>Base scale</label>
-                <div class="control-row">
-                    <input type="range" id="scale-slider" min="0.05" max="0.5" step="0.01" value="0.15">
-                    <span id="scale-value">0.15</span>
-                </div>
-            </div>
-            
-            <div class="control-group">
-                <label>Position X (left ← → right)</label>
-                <div class="control-row">
-                    <input type="range" id="x-slider" min="-0.3" max="0.3" step="0.01" value="0">
-                    <span id="x-value">0.00</span>
-                </div>
-            </div>
-            
-            <div class="control-group">
-                <label>Position Y (up ↑ ↓ down)</label>
-                <div class="control-row">
-                    <input type="range" id="y-slider" min="-0.3" max="0.3" step="0.01" value="0.1">
-                    <span id="y-value">0.10</span>
-                </div>
-            </div>
-            
-            <div class="control-buttons">
-                <button class="btn-reset" id="reset-btn">Reset</button>
-                <button class="btn-copy" id="copy-btn">Copy config</button>
-            </div>
-        </div>
-        
-        <!-- Emotion/expression test buttons -->
-        <div class="settings-section">
-            <h3>Emotions (testing)</h3>
-            <p class="form-hint mb-2">Click each to see what it looks like, then let me know which is which.</p>
-            <div id="expression-buttons" class="flex-row flex-wrap gap-2">
-                <button class="btn secondary" data-expression="0">Neutral</button>
-                <button class="btn secondary" data-expression="1">Happy (eyes closed smile)</button>
-                <button class="btn secondary" data-expression="2">Angry</button>
-                <button class="btn secondary" data-expression="3">Sad</button>
-                <button class="btn secondary" data-expression="4">Sympathetic</button>
-                <button class="btn secondary" data-expression="5">Surprised (subtle)</button>
-                <button class="btn secondary" data-expression="6">Calm / Sleepy</button>
-                <button class="btn secondary" data-expression="7">Crying</button>
-                <button class="btn secondary" data-expression="8">Shocked (O-O)</button>
-                <button class="btn secondary" data-expression="9">Embarrassed (&gt;-&lt;)</button>
-                <button class="btn ghost" data-expression="">Reset to default</button>
-            </div>
-        </div>
-        
-        <!-- Raw parameter testing panel - for exploring unlabeled params and building custom expressions -->
-        <div class="settings-section">
+
             <div class="toggle-option" style="margin-bottom: 0;">
-                <label>Raw parameters (advanced)</label>
+                <label>Show debug settings</label>
                 <label class="toggle-switch">
-                    <input type="checkbox" id="toggle-raw-params">
+                    <input type="checkbox" id="toggle-debug-settings">
                     <span class="toggle-slider"></span>
                 </label>
             </div>
-            <div id="raw-params-panel" class="hidden" style="margin-top: 12px; max-height: 320px; overflow-y: auto;">
-                <p class="form-hint mb-2">Live parameter sliders. Move one to see what it controls, then use combinations to build custom expressions.</p>
-                <div id="raw-params-list"></div>
-                <button class="btn ghost mt-2" id="raw-params-reset" style="width: 100%;">Reset all to default</button>
+        </div>
+
+        <!-- Everything below is hidden unless "Show debug settings" is on -->
+        <div id="debug-settings-panel" class="hidden">
+
+            <div class="settings-section">
+                <h3>Debug</h3>
+
+                <div class="toggle-option">
+                    <label>Show position controls</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-edit-controls" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="toggle-option">
+                    <label>Always show position readout</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-position-display">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
             </div>
+
+            <!-- Live editing controls -->
+            <div id="edit-controls">
+                <h3>Position &amp; scale</h3>
+
+                <div class="control-group">
+                    <label>Base scale</label>
+                    <div class="control-row">
+                        <input type="range" id="scale-slider" min="0.05" max="0.5" step="0.01" value="0.15">
+                        <span id="scale-value">0.15</span>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Position X (left ← → right)</label>
+                    <div class="control-row">
+                        <input type="range" id="x-slider" min="-0.3" max="0.3" step="0.01" value="0">
+                        <span id="x-value">0.00</span>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Position Y (up ↑ ↓ down)</label>
+                    <div class="control-row">
+                        <input type="range" id="y-slider" min="-0.3" max="0.3" step="0.01" value="0.1">
+                        <span id="y-value">0.10</span>
+                    </div>
+                </div>
+
+                <div class="control-buttons">
+                    <button class="btn-reset" id="reset-btn">Reset</button>
+                    <button class="btn-copy" id="copy-btn">Copy config</button>
+                </div>
+            </div>
+
+            <!-- Emotion/expression test buttons -->
+            <div class="settings-section">
+                <h3>Emotions (testing)</h3>
+                <p class="form-hint mb-2">Click each to see what it looks like, then let me know which is which.</p>
+                <div id="expression-buttons" class="flex-row flex-wrap gap-2">
+                    <button class="btn secondary" data-expression="0">Neutral</button>
+                    <button class="btn secondary" data-expression="1">Happy (eyes closed smile)</button>
+                    <button class="btn secondary" data-expression="2">Angry</button>
+                    <button class="btn secondary" data-expression="3">Sad</button>
+                    <button class="btn secondary" data-expression="4">Sympathetic</button>
+                    <button class="btn secondary" data-expression="5">Surprised (subtle)</button>
+                    <button class="btn secondary" data-expression="6">Calm / Sleepy</button>
+                    <button class="btn secondary" data-expression="7">Crying</button>
+                    <button class="btn secondary" data-expression="8">Shocked (O-O)</button>
+                    <button class="btn secondary" data-expression="9">Embarrassed (&gt;-&lt;)</button>
+                    <button class="btn ghost" data-expression="">Reset to default</button>
+                </div>
+            </div>
+
+            <!-- Raw parameter testing panel - for exploring unlabeled params and building custom expressions -->
+            <div class="settings-section">
+                <div class="toggle-option" style="margin-bottom: 0;">
+                    <label>Raw parameters (advanced)</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-raw-params">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="raw-params-panel" class="hidden" style="margin-top: 12px; max-height: 320px; overflow-y: auto;">
+                    <p class="form-hint mb-2">Live parameter sliders. Move one to see what it controls, then use combinations to build custom expressions.</p>
+                    <div id="raw-params-list"></div>
+                    <button class="btn ghost mt-2" id="raw-params-reset" style="width: 100%;">Reset all to default</button>
+                </div>
+            </div>
+
         </div>
 
         <div id="character-list">
@@ -1092,6 +1117,16 @@
                 if (document.getElementById('raw-params-list').children.length === 0) {
                     setupRawParameterPanel();
                 }
+            } else {
+                panel.classList.add('hidden');
+            }
+        });
+
+        // Master toggle for all debug/testing controls - hidden by default
+        document.getElementById('toggle-debug-settings').addEventListener('change', (e) => {
+            const panel = document.getElementById('debug-settings-panel');
+            if (e.target.checked) {
+                panel.classList.remove('hidden');
             } else {
                 panel.classList.add('hidden');
             }
@@ -1909,9 +1944,14 @@
                 speakBtn.textContent = 'Send';
 
                 // Return to neutral a beat after she stops talking, so the
-                // expression doesn't stay frozen until the next message
+                // expression doesn't stay frozen until the next message.
+                // Same timing gates the mic auto-restart (if enabled) - both
+                // happen together once she's genuinely done.
                 setTimeout(() => {
                     triggerEmotion('neutral');
+                    if (micAlwaysOn) {
+                        startListening();
+                    }
                 }, 1000);
             };
         }
@@ -2011,6 +2051,93 @@
             });
         }
 
+        // Voice input via browser-native Speech Recognition - top-level scope so
+        // both the manual mic button AND the auto-restart-after-she-speaks logic
+        // (in playAudioWithLipSync) can both reach it.
+        const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        let isListening = false;
+        let micAlwaysOn = localStorage.getItem('compa_mic_always_on') === 'true'; // default OFF on first-ever load
+
+        function setupVoiceInput(sendMessageFn) {
+            const micBtn = document.getElementById('mic-btn');
+            const textInput = document.getElementById('text-input');
+
+            if (!SpeechRecognitionAPI) {
+                console.warn('Speech Recognition not supported in this browser - hiding mic button');
+                micBtn.style.display = 'none';
+                document.getElementById('toggle-mic-always-on').closest('.toggle-option').style.display = 'none';
+                return;
+            }
+
+            recognition = new SpeechRecognitionAPI();
+            recognition.continuous = false;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isListening = true;
+                micBtn.classList.add('listening');
+                micBtn.textContent = '⏹️';
+                textInput.placeholder = 'Listening...';
+            };
+
+            recognition.onresult = (event) => {
+                let transcript = '';
+                for (let i = 0; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
+                textInput.value = transcript;
+
+                // Final result - send automatically, like actually talking to her.
+                // This also naturally turns the mic off (recognition auto-stops
+                // after a final result since continuous=false).
+                if (event.results[event.results.length - 1].isFinal) {
+                    sendMessageFn();
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                if (event.error === 'not-allowed') {
+                    textInput.placeholder = 'Microphone access denied';
+                }
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                micBtn.classList.remove('listening');
+                micBtn.textContent = '🎤';
+                textInput.placeholder = 'Say something to Compa…';
+            };
+
+            micBtn.addEventListener('click', () => {
+                if (isListening) {
+                    recognition.stop();
+                } else {
+                    startListening();
+                }
+            });
+
+            // Mic-always-on toggle: persists in localStorage, but defaults to
+            // OFF on a genuinely first-ever load (no saved value yet)
+            const micAlwaysOnToggle = document.getElementById('toggle-mic-always-on');
+            micAlwaysOnToggle.checked = micAlwaysOn;
+            micAlwaysOnToggle.addEventListener('change', (e) => {
+                micAlwaysOn = e.target.checked;
+                localStorage.setItem('compa_mic_always_on', micAlwaysOn ? 'true' : 'false');
+            });
+        }
+
+        function startListening() {
+            if (!recognition || isListening) return;
+            try {
+                recognition.start();
+            } catch (err) {
+                console.error('Failed to start speech recognition:', err);
+            }
+        }
+
         function initTextInput() {
             const textInput = document.getElementById('text-input');
             const speakBtn = document.getElementById('speak-btn');
@@ -2044,67 +2171,7 @@
                 if (e.key === 'Enter') sendMessage();
             });
 
-            // Voice input via browser-native Speech Recognition
-            const micBtn = document.getElementById('mic-btn');
-            const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-            if (!SpeechRecognitionAPI) {
-                console.warn('Speech Recognition not supported in this browser - hiding mic button');
-                micBtn.style.display = 'none';
-            } else {
-                const recognition = new SpeechRecognitionAPI();
-                recognition.continuous = false;
-                recognition.interimResults = true;
-                recognition.lang = 'en-US';
-
-                let isListening = false;
-
-                recognition.onstart = () => {
-                    isListening = true;
-                    micBtn.classList.add('listening');
-                    micBtn.textContent = '⏹️';
-                    textInput.placeholder = 'Listening...';
-                };
-
-                recognition.onresult = (event) => {
-                    let transcript = '';
-                    for (let i = 0; i < event.results.length; i++) {
-                        transcript += event.results[i][0].transcript;
-                    }
-                    textInput.value = transcript;
-
-                    // Final result - send automatically, like actually talking to her
-                    if (event.results[event.results.length - 1].isFinal) {
-                        sendMessage();
-                    }
-                };
-
-                recognition.onerror = (event) => {
-                    console.error('Speech recognition error:', event.error);
-                    if (event.error === 'not-allowed') {
-                        textInput.placeholder = 'Microphone access denied';
-                    }
-                };
-
-                recognition.onend = () => {
-                    isListening = false;
-                    micBtn.classList.remove('listening');
-                    micBtn.textContent = '🎤';
-                    textInput.placeholder = 'Say something to Compa…';
-                };
-
-                micBtn.addEventListener('click', () => {
-                    if (isListening) {
-                        recognition.stop();
-                    } else {
-                        try {
-                            recognition.start();
-                        } catch (err) {
-                            console.error('Failed to start speech recognition:', err);
-                        }
-                    }
-                });
-            }
+            setupVoiceInput(sendMessage);
         }
 
         // Initialize everything

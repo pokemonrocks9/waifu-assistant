@@ -987,63 +987,24 @@
                     currentModel.destroy();
                 }
 
-                // For custom models, try to pre-fetch and clean the JSON
+                // For custom models, validate the JSON is parseable first (useful for catching BOM/encoding issues),
+                // then load directly. (Blob-URL loading was removed - it can't resolve the relative paths
+                // that multi-file Live2D models depend on for their .moc3/textures/expressions, so it always
+                // failed here anyway and just added noise + a wasted round-trip.)
                 if (character.isCustom) {
                     try {
-                        console.log('Fetching model JSON...');
+                        console.log('Validating model JSON...');
                         const response = await fetch(character.modelUrl);
                         const text = await response.text();
-                        
-                        console.log('Raw JSON length:', text.length);
-                        console.log('First 200 chars:', text.substring(0, 200));
-                        console.log('Last 200 chars:', text.substring(text.length - 200));
-                        
-                        // Remove BOM if present
                         const cleanText = text.replace(/^\uFEFF/, '');
-                        
-                        // Try to parse it
-                        const json = JSON.parse(cleanText);
-                        console.log('Model JSON parsed successfully:', json);
-                        
-                        // Create a blob URL with clean JSON
-                        const blob = new Blob([cleanText], { type: 'application/json' });
-                        const blobUrl = URL.createObjectURL(blob);
-                        
-                        // Load from blob URL
-                        const model = await PIXI.live2d.Live2DModel.from(blobUrl, {
-                            autoInteract: false
-                        });
-                        
-                        URL.revokeObjectURL(blobUrl);
-                        
-                        currentModel = model;
-                        currentCharacter = character;
-
-                        // Position and scale the model
-                        positionModel(model, character);
-
-                        // Add to stage
-                        app.stage.addChild(model);
-
-                        // Setup model parameters
-                        setupModelBehaviors(model);
-
-                        // Update status
-                        statusDiv.textContent = `Model: ${character.name}`;
-                        loadingDiv.style.display = 'none';
-
-                        console.log('Live2D model loaded successfully!');
-                        console.log('Available motions:', model.internalModel.motionManager.definitions);
-                        console.log('Available expressions:', Object.keys(model.internalModel.motionManager.expressionManager?.definitions || {}));
-                        
-                        return;
-                    } catch (fetchError) {
-                        console.error('Pre-fetch failed, trying direct load:', fetchError);
-                        console.error('Error details:', fetchError.stack);
+                        JSON.parse(cleanText); // throws if malformed
+                        console.log('Model JSON valid, proceeding with direct load.');
+                    } catch (validationError) {
+                        console.error('Model JSON validation failed:', validationError);
                     }
                 }
 
-                // Standard loading (for CDN models or if pre-fetch fails)
+                // Standard loading (for CDN models or custom models alike)
                 const model = await PIXI.live2d.Live2DModel.from(character.modelUrl, {
                     autoInteract: false
                 });

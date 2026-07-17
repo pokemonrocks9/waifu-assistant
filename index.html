@@ -1915,6 +1915,197 @@
             }
         }
 
+        // ============================================================
+        // Touch interaction system
+        // ============================================================
+        // Zones are either HOLD (petting) or POKE (discrete touch, with
+        // escalation). Reactions are hardcoded/canned wherever possible;
+        // the LLM is only ever invoked for chest/skirt, and even then the
+        // expression is forced client-side (never left to the LLM's choice)
+        // so boundary-setting behavior is guaranteed, not roleplay-driven.
+
+        const PET_ZONES = new Set(['head', 'hair_back']);
+        const LLM_ZONES = new Set(['chest', 'skirt']);
+        const PET_HOLD_THRESHOLD_MS = 2500;
+        const TOUCH_COOLDOWN_MS = 1200;
+        const ESCALATION_RESET_MS = 6000; // no touches in this zone for this long -> escalation resets
+
+        const ZONE_LINES = {
+            face: {
+                1: null, // just expression, no line needed at first poke
+                2: ["Hey, careful!", "Hehe, that tickles a little!"]
+            },
+            hand_L: { 2: ["That tickles!", "Hehe, careful there!"] },
+            hand_R: { 2: ["That tickles!", "Hehe, careful there!"] },
+            arm_L: { 2: ["Tee-hee, that tickles!"] },
+            arm_R: { 2: ["Tee-hee, that tickles!"] },
+            neck: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
+            choker: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
+            leg_L: { 1: ["Um, that's a little forward..."], 2: ["Hey! That startled me!"] },
+            leg_R: { 1: ["Um, that's a little forward..."], 2: ["Hey! That startled me!"] }
+        };
+
+        const ZONE_EXPRESSIONS = {
+            face: { 1: 'surprised', 2: 'happy' },
+            hand_L: { 1: 'happy', 2: 'happy' },
+            hand_R: { 1: 'happy', 2: 'happy' },
+            arm_L: { 1: 'happy', 2: 'happy' },
+            arm_R: { 1: 'happy', 2: 'happy' },
+            neck: { 1: 'embarrassed', 2: 'embarrassed' },
+            choker: { 1: 'embarrassed', 2: 'embarrassed' },
+            leg_L: { 1: 'embarrassed', 2: 'shocked' },
+            leg_R: { 1: 'embarrassed', 2: 'shocked' }
+        };
+
+        let lastTouchTime = 0;
+        let zoneEscalation = {}; // zone -> { level, lastTouch }
+        let petState = { active: false, zone: null, startTime: 0 };
+
+        function pickRandom(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        async function speakDirectly(text) {
+            // Bypasses the LLM entirely for canned lines - straight to TTS,
+            // same as how the manual expression test buttons work, just with
+            // actual audio output this time.
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/tts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                if (!response.ok) throw new Error(`TTS request failed: ${response.status}`);
+                const blob = await response.blob();
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64 = reader.result.split(',')[1];
+                    playAudioWithLipSync(base64);
+                };
+                reader.readAsDataURL(blob);
+            } catch (err) {
+                console.error('Direct TTS failed:', err);
+            }
+        }
+
+        async function reportTouch(zone, mode) {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/touch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ zone, mode })
+                });
+                return await response.json();
+            } catch (err) {
+                console.error('Touch report failed:', err);
+                return null;
+            }
+        }
+
+        function getEscalationLevel(zone) {
+            const now = Date.now();
+            const state = zoneEscalation[zone];
+            if (!state || (now - state.lastTouch) > ESCALATION_RESET_MS) {
+                zoneEscalation[zone] = { level: 1, lastTouch: now };
+                return 1;
+            }
+            const newLevel = Math.min(state.level + 1, 2); // cap at level 2 for now
+            zoneEscalation[zone] = { level: newLevel, lastTouch: now };
+            return newLevel;
+        }
+
+        async function handlePoke(zone) {
+            const now = Date.now();
+            if (now - lastTouchTime < TOUCH_COOLDOWN_MS) return;
+            lastTouchTime = now;
+
+            const level = getEscalationLevel(zone);
+            console.log(`Poked: ${zone} (escalation level ${level})`);
+
+            if (LLM_ZONES.has(zone)) {
+                // Chest/skirt: always routes through the LLM for the line, but
+                // the expression is forced regardless of what comes back.
+                triggerEmotion('shocked');
+                const result = await reportTouch(zone, 'llm');
+                if (result && result.text) {
+                    triggerEmotion('shocked'); // force again after response, don't trust any tag
+                    speakDirectly(result.text);
+                }
+                return;
+            }
+
+            // Regular poke zones: hardcoded expression + optional canned line
+            const expression = ZONE_EXPRESSIONS[zone]?.[level] || ZONE_EXPRESSIONS[zone]?.[1];
+            if (expression) triggerEmotion(expression);
+
+            await reportTouch(zone, 'canned'); // silently bumps sensitive counter if applicable
+
+            const lines = ZONE_LINES[zone]?.[level];
+            if (lines) {
+                speakDirectly(pickRandom(lines));
+            }
+        }
+
+        function handlePetStart(zone) {
+            if (petState.active) return;
+            petState = { active: true, zone, startTime: Date.now() };
+            triggerEmotion('sleeping');
+            console.log(`Petting started: ${zone}`);
+        }
+
+        async function handlePetEnd() {
+            if (!petState.active) return;
+            const duration = Date.now() - petState.startTime;
+            const zone = petState.zone;
+            petState = { active: false, zone: null, startTime: 0 };
+
+            console.log(`Petting ended: ${zone} (${duration}ms)`);
+
+            if (duration < PET_HOLD_THRESHOLD_MS) {
+                // Too short - she can only respond AFTER release, never mid-hold,
+                // so this doesn't fight with the sleepy expression/animation
+                speakDirectly(pickRandom(["Wait, why'd you stop?", "Aw, already done?"]));
+                triggerEmotion('neutral');
+            } else {
+                // Held a proper while - just settle back naturally, no complaint
+                triggerEmotion('neutral');
+            }
+
+            await reportTouch(zone, 'pet');
+        }
+
+        function setupTouchInteractions() {
+            if (!currentModel || !app) return;
+
+            currentModel.interactive = true;
+            currentModel.buttonMode = true;
+
+            const onPointerDown = (event) => {
+                const point = event.data.global;
+                const hitAreas = currentModel.hitTest(point.x, point.y);
+                if (!hitAreas || hitAreas.length === 0) return;
+
+                const zone = hitAreas[0];
+                console.log('Hit zone:', zone);
+
+                if (PET_ZONES.has(zone)) {
+                    handlePetStart(zone);
+                } else {
+                    handlePoke(zone);
+                }
+            };
+
+            const onPointerUp = () => {
+                if (petState.active) {
+                    handlePetEnd();
+                }
+            };
+
+            currentModel.on('pointerdown', onPointerDown);
+            app.stage.on('pointerup', onPointerUp);
+            app.stage.on('pointerupoutside', onPointerUp);
+        }
+
         function playAudioWithLipSync(audioBase64) {
             const audio = new Audio('data:audio/wav;base64,' + audioBase64);
             
@@ -2187,6 +2378,7 @@
             // Load default character
             await loadLive2DModel(CHARACTERS[0]);
             setupExpressionButtons();
+            setupTouchInteractions();
             
             // Connect to backend
             connectWebSocket();

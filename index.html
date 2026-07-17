@@ -186,7 +186,6 @@
             display: flex;
             gap: 10px;
             z-index: 10;
-            transition: bottom 0.1s ease-out;
         }
 
         #text-input {
@@ -721,7 +720,7 @@
     <div id="error"></div>
 
     <div id="status-info">
-        <div>Pod link <span id="pod-version" style="opacity: 0.4; font-size: 9px; margin-left: 4px; font-family: var(--font-mono);"></span></div>
+        <div>Pod link <span id="pod-version" style="opacity: 0.5; font-size: 8px; margin-left: 4px; font-family: var(--font-mono); border: 1px solid rgba(103, 232, 249, 0.2); padding: 1px 3px; border-radius: 3px;"></span></div>
         <div id="model-status">No model loaded</div>
     </div>
 
@@ -1905,11 +1904,12 @@
 
             async function fetchVersion() {
                 try {
-                    const response = await fetch('./sw.js');
+                    // Add cache buster to ensure we get the latest SW version info
+                    const response = await fetch('./sw.js?t=' + Date.now());
                     const text = await response.text();
                     const match = text.match(/const SW_VERSION = '(.+?)'/);
                     if (match && match[1]) {
-                        document.getElementById('pod-version').textContent = `[${match[1]}]`;
+                        document.getElementById('pod-version').textContent = match[1];
                     }
                 } catch (e) {
                     console.warn('Failed to fetch version from sw.js', e);
@@ -1930,22 +1930,24 @@
 
             function updateViewport() {
                 if (window.visualViewport) {
-                    const vv = window.visualViewport;
-                    
-                    // 1. Calculate how much the keyboard is pushing up
-                    const kbHeight = window.innerHeight - vv.height;
-                    document.documentElement.style.setProperty('--kb-height', `${Math.max(0, kbHeight - vv.offsetTop)}px`);
+                    requestAnimationFrame(() => {
+                        const vv = window.visualViewport;
+                        
+                        // 1. Calculate how much the keyboard is pushing up
+                        const kbHeight = Math.max(0, window.innerHeight - vv.height);
+                        document.documentElement.style.setProperty('--kb-height', `${Math.max(0, kbHeight - vv.offsetTop)}px`);
 
-                    // 2. Counteract the browser's 'pan' by shifting pinned elements down
-                    // This keeps the Pod Link and Character from sliding off the top
-                    const offset = vv.offsetTop;
-                    const pinnedElements = [
-                        document.getElementById('status-info'),
-                        ...document.querySelectorAll('.hud-corner.tl, .hud-corner.tr'),
-                        document.getElementById('canvas-container')
-                    ];
-                    pinnedElements.forEach(el => {
-                        if (el) el.style.transform = `translateY(${offset}px)`;
+                        // 2. Counteract the browser's 'pan' by shifting pinned elements down
+                        // This keeps the Pod Link and Character from sliding off the top
+                        const offset = vv.offsetTop;
+                        const pinnedElements = [
+                            document.getElementById('status-info'),
+                            ...document.querySelectorAll('.hud-corner.tl, .hud-corner.tr'),
+                            document.getElementById('canvas-container')
+                        ];
+                        pinnedElements.forEach(el => {
+                            if (el) el.style.transform = `translateY(${offset}px)`;
+                        });
                     });
 
                     // 3. Keep layout locked at 0,0

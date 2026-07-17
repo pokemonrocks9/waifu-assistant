@@ -4,7 +4,7 @@
   "FadeOutTime": 0.25,
   "Parameters": [
     {
-      "ID": "eye_close",
+      "Id": "eye_close",
       "Value": 1,
       "Blend": "Add"
     }

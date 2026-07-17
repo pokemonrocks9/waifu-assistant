@@ -937,12 +937,18 @@
                                     console.log('Current parameter values:', values);
 
                                     // Log the FULL real parameter list to check if these are actually valid parameters at all
-                                    const count = core.getParameterCount();
-                                    const allParams = [];
-                                    for (let i = 0; i < count; i++) {
-                                        allParams.push(core.getParameterId(i));
+                                    try {
+                                        // Try common Cubism4 core API shapes
+                                        if (core._model && core._model.parameters && core._model.parameters.ids) {
+                                            console.log('Full parameter list (via _model.parameters.ids):', core._model.parameters.ids);
+                                        } else if (typeof core.getParameterIds === 'function') {
+                                            console.log('Full parameter list (via getParameterIds):', core.getParameterIds());
+                                        } else {
+                                            console.log('Could not find parameter list method. Available core methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(core)));
+                                        }
+                                    } catch (e2) {
+                                        console.warn('Parameter list enumeration failed:', e2);
                                     }
-                                    console.log(`Full parameter list (${count} total):`, allParams);
                                 } catch (e) {
                                     console.warn('Could not read parameter values for debug:', e);
                                 }

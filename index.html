@@ -2014,6 +2014,20 @@
             return newLevel;
         }
 
+        let pendingExpressionReset = null;
+
+        function scheduleExpressionReset(delayMs) {
+            // Independent of audio playback - some reactions (especially level-1
+            // pokes) have no spoken line at all, so relying solely on
+            // audio.onended left those expressions frozen forever with nothing
+            // to ever revert them.
+            if (pendingExpressionReset) clearTimeout(pendingExpressionReset);
+            pendingExpressionReset = setTimeout(() => {
+                triggerEmotion('neutral');
+                pendingExpressionReset = null;
+            }, delayMs);
+        }
+
         async function handlePoke(zone) {
             const now = Date.now();
             if (now - lastTouchTime < TOUCH_COOLDOWN_MS) return;
@@ -2042,12 +2056,18 @@
 
             const lines = ZONE_LINES[zone]?.[level];
             if (lines) {
-                speakDirectly(pickRandom(lines));
+                speakDirectly(pickRandom(lines)); // audio.onended will reset expression once she's done
+            } else if (expression) {
+                scheduleExpressionReset(2000); // no line to speak - revert on a timer instead
             }
         }
 
         function handlePetStart(zone) {
             if (petState.active) return;
+            if (pendingExpressionReset) {
+                clearTimeout(pendingExpressionReset);
+                pendingExpressionReset = null;
+            }
             petState = { active: true, zone, startTime: Date.now() };
             triggerEmotion('sleeping');
             console.log(`Petting started: ${zone}`);
@@ -2102,8 +2122,15 @@
             };
 
             currentModel.on('pointerdown', onPointerDown);
-            currentModel.on('pointerup', onPointerUp);
-            currentModel.on('pointerupoutside', onPointerUp);
+
+            // Use a global release listener rather than PIXI's model-specific
+            // pointerup/pointerupoutside - those weren't reliably firing,
+            // likely due to hit-area precision at release position. Since
+            // petState is already tracked in plain JS, we don't need PIXI's
+            // hit-testing for the "release" side at all - just "did a pointer
+            // go up anywhere while petting was active".
+            window.addEventListener('pointerup', onPointerUp);
+            window.addEventListener('touchend', onPointerUp);
         }
 
         function playAudioWithLipSync(audioBase64) {

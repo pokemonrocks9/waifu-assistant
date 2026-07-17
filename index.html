@@ -958,7 +958,14 @@
             window.addEventListener('resize', () => {
                 if (window.innerWidth !== lastRendererWidth) {
                     lastRendererWidth = window.innerWidth;
-                    app.renderer.resize(window.innerWidth, window.innerHeight);
+                    
+                    // On mobile, height can change when the keyboard pops up.
+                    // Use the locked app height if we're currently in an input to prevent squashing.
+                    const appHeight = getComputedStyle(document.documentElement).getPropertyValue('--app-height');
+                    const h = (appHeight.includes('px') && document.activeElement.id === 'text-input') 
+                        ? parseFloat(appHeight) : window.innerHeight;
+
+                    app.renderer.resize(window.innerWidth, h);
                     if (currentModel) {
                         positionModel(currentModel, currentCharacter);
                     }
@@ -1198,11 +1205,12 @@
         }
 
         function positionModel(model, character) {
-            // Center the model
-            model.anchor.set(0.5, 0.5);
+            // Use the dimensions of the PIXI application screen rather than the 
+            // window's viewport, which can change when the mobile keyboard opens.
+            const screenWidth = app.screen.width;
+            const screenHeight = app.screen.height;
             
-            const screenWidth = window.innerWidth;
-            const screenHeight = window.innerHeight;
+            model.anchor.set(0.5, 0.5);
             
             // Determine if mobile (phones) or desktop
             const isMobile = screenWidth < 768;
@@ -1211,12 +1219,12 @@
             const scale = (isMobile && character.scaleMobile !== undefined) ? character.scaleMobile : character.scale;
             const position = (isMobile && character.positionMobile) ? character.positionMobile : character.position;
             
-            console.log(`Screen: ${screenWidth}x${screenHeight}, Device: ${isMobile ? 'Mobile' : 'Desktop'}, Scale: ${scale.toFixed(3)}, Position: x=${position.x.toFixed(2)}, y=${position.y.toFixed(2)}`);
+            console.log(`Canvas: ${screenWidth}x${screenHeight}, Device: ${isMobile ? 'Mobile' : 'Desktop'}, Scale: ${scale.toFixed(3)}, Position: x=${position.x.toFixed(2)}, y=${position.y.toFixed(2)}`);
             
             // Position on screen
             model.position.set(
-                window.innerWidth * (0.5 + position.x),
-                window.innerHeight * (0.5 + position.y)
+                screenWidth * (0.5 + position.x),
+                screenHeight * (0.5 + position.y)
             );
             
             // Apply uniform scale (no stretching)

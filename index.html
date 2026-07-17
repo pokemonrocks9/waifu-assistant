@@ -1752,34 +1752,6 @@
                 isConnected = true;
             };
 
-            // Maps emotion labels the LLM tags responses with to expression indices
-            const EMOTION_TO_EXPRESSION = {
-                neutral: 0,
-                happy: 1,
-                angry: 2,
-                sad: 3,
-                sympathetic: 4,
-                surprised: 5,
-                calm: 6,
-                crying: 7,
-                shocked: 8,
-                embarrassed: 9
-            };
-
-            function triggerEmotion(emotion) {
-                if (!currentModel) return;
-                const idx = EMOTION_TO_EXPRESSION[emotion];
-                if (idx === undefined) {
-                    console.warn(`Unknown emotion "${emotion}", skipping expression trigger`);
-                    return;
-                }
-                try {
-                    currentModel.expression(idx);
-                    console.log(`Emotion triggered: ${emotion} (expression ${idx})`);
-                } catch (err) {
-                    console.error(`Failed to trigger emotion "${emotion}":`, err);
-                }
-            }
 
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
@@ -1818,6 +1790,35 @@
             };
         }
 
+        // Maps emotion labels the LLM tags responses with to expression indices
+        const EMOTION_TO_EXPRESSION = {
+            neutral: 0,
+            happy: 1,
+            angry: 2,
+            sad: 3,
+            sympathetic: 4,
+            surprised: 5,
+            calm: 6,
+            crying: 7,
+            shocked: 8,
+            embarrassed: 9
+        };
+
+        function triggerEmotion(emotion) {
+            if (!currentModel) return;
+            const idx = EMOTION_TO_EXPRESSION[emotion];
+            if (idx === undefined) {
+                console.warn(`Unknown emotion "${emotion}", skipping expression trigger`);
+                return;
+            }
+            try {
+                currentModel.expression(idx);
+                console.log(`Emotion triggered: ${emotion} (expression ${idx})`);
+            } catch (err) {
+                console.error(`Failed to trigger emotion "${emotion}":`, err);
+            }
+        }
+
         function playAudioWithLipSync(audioBase64) {
             const audio = new Audio('data:audio/wav;base64,' + audioBase64);
             
@@ -1845,6 +1846,12 @@
             audio.onended = () => {
                 speakBtn.classList.remove('speaking');
                 speakBtn.textContent = 'Send';
+
+                // Return to neutral a beat after she stops talking, so the
+                // expression doesn't stay frozen until the next message
+                setTimeout(() => {
+                    triggerEmotion('neutral');
+                }, 1000);
             };
         }
 

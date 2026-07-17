@@ -1,13 +1,13 @@
 // Service Worker for Compa PWA
 // Bump this version number on every deploy to force clients to pick up new files
-const SW_VERSION = 'v0.4.0';
+const SW_VERSION = '0.4.1';
 const CACHE_NAME = `compa-pod-${SW_VERSION}`;
 const urlsToCache = [
   './',
   './index.html',
   './manifest.json',
-  './icon-192.png',
-  './icon-512.png'
+  './compa-icon-192.png',
+  './compa-icon-512.png'
 ];
 
 // Install event - cache core files

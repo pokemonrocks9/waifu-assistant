@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual">
     <meta name="theme-color" content="#05070d">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -59,6 +59,7 @@
             top: 0;
             left: 0;
             height: var(--app-height, 100%);
+            overscroll-behavior: none;
         }
 
         /* Ambient scan-line texture — the pod's projection field */
@@ -176,7 +177,7 @@
         /* Message input dock */
         #text-input-container {
             position: fixed;
-            bottom: calc(24px + var(--keyboard-offset, 0px));
+            bottom: 24px;
             left: 50%;
             transform: translateX(-50%);
             width: 92%;
@@ -184,7 +185,6 @@
             display: flex;
             gap: 10px;
             z-index: 10;
-            transition: bottom 0.15s ease-out;
         }
 
         #text-input {
@@ -1896,7 +1896,8 @@
                 // Don't recapture while the keyboard is open - that would lock in
                 // a shrunk height permanently
                 if (document.activeElement === textInput) return;
-                const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                // Lock to current window height to prevent character squashing
+                const h = window.innerHeight;
                 document.documentElement.style.setProperty('--app-height', `${h}px`);
             }
 
@@ -1908,12 +1909,11 @@
                 requestAnimationFrame(() => requestAnimationFrame(captureAppHeight));
             });
 
-            function updateKeyboardOffset() {
+            function updateViewport() {
                 if (window.visualViewport) {
-                    const keyboardOffset = window.innerHeight - (window.visualViewport.height + window.visualViewport.offsetTop);
-                    document.documentElement.style.setProperty('--keyboard-offset', `${Math.max(0, keyboardOffset)}px`);
-                    
-                    // Force scroll to top to prevent the background from shifting up
+                    // Kill the browser's attempt to scroll the background up.
+                    // Because the chat bar is 'fixed', it automatically stays above
+                    // the keyboard as the visual viewport shrinks.
                     if (window.visualViewport.offsetTop > 0 || window.scrollY > 0) {
                         window.scrollTo(0, 0);
                     }
@@ -1921,8 +1921,8 @@
             }
 
             if (window.visualViewport) {
-                window.visualViewport.addEventListener('resize', updateKeyboardOffset);
-                window.visualViewport.addEventListener('scroll', updateKeyboardOffset);
+                window.visualViewport.addEventListener('resize', updateViewport);
+                window.visualViewport.addEventListener('scroll', updateViewport);
             }
 
             // Only update --app-height on genuine device rotation/window resize,

@@ -4,7 +4,7 @@
   "FadeOutTime": 0.25,
   "Parameters": [
     {
-      "ID": "pokan_",
+      "Id": "pokan_",
       "Value": 1,
       "Blend": "Add"
     }

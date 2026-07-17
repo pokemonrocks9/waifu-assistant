@@ -175,6 +175,7 @@
 
         #text-input {
             flex: 1;
+            min-width: 0;
             background: var(--panel);
             border: 1px solid var(--hairline);
             border-radius: 8px;
@@ -207,6 +208,8 @@
             letter-spacing: 0.02em;
             cursor: pointer;
             transition: all 0.2s;
+            flex-shrink: 0;
+            white-space: nowrap;
         }
 
         #speak-btn:hover {
@@ -217,6 +220,19 @@
         #speak-btn.speaking {
             background: var(--magenta);
             color: var(--void);
+        }
+
+        @media (max-width: 480px) {
+            #text-input-container {
+                width: 96%;
+                gap: 6px;
+            }
+            #speak-btn {
+                padding: 14px 16px;
+            }
+            #mobile-menu-btn, #mic-btn {
+                width: 40px;
+            }
         }
 
         #mobile-menu-btn {
@@ -1843,7 +1859,7 @@
             sad: 3,
             sympathetic: 4,
             surprised: 5,
-            calm: 6,
+            sleeping: 6,
             crying: 7,
             shocked: 8,
             embarrassed: 9

@@ -196,6 +196,11 @@
             border-color: var(--cyan-dim);
         }
 
+        #text-input:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         #speak-btn {
             background: var(--cyan);
             border: none;
@@ -220,6 +225,12 @@
         #speak-btn.speaking {
             background: var(--magenta);
             color: var(--void);
+        }
+
+        #speak-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
         }
 
         @media (max-width: 480px) {
@@ -1871,6 +1882,9 @@
                 } else if (data.type === 'audio') {
                     // Play audio and trigger lip sync
                     playAudioWithLipSync(data.data);
+                } else if (data.type === 'error') {
+                    console.error('Backend error:', data.text);
+                    setInteractionsLocked(false); // no audio will ever arrive for this one
                 }
             };
 
@@ -1899,6 +1913,48 @@
             shocked: 8,
             embarrassed: 9
         };
+
+        // ============================================================
+        // Global interaction lock
+        // ============================================================
+        // While any LLM request is in flight (or she's actively speaking the
+        // result), every interaction path is disabled - chat send, mic, touch
+        // zones - so overlapping LLM/TTS calls can never happen in the first
+        // place. Complements the server-side RVC concurrency fix with a
+        // client-side guarantee that we never even send overlapping requests.
+        let interactionsLocked = false;
+        let lockSafetyTimeout = null;
+
+        function setInteractionsLocked(locked) {
+            interactionsLocked = locked;
+
+            const speakBtn = document.getElementById('speak-btn');
+            const textInput = document.getElementById('text-input');
+            const micBtn = document.getElementById('mic-btn');
+
+            if (speakBtn) {
+                speakBtn.disabled = locked;
+            }
+            if (textInput) {
+                textInput.disabled = locked;
+                textInput.placeholder = locked ? 'Waiting...' : 'Say something to Compa…';
+            }
+            if (micBtn) micBtn.disabled = locked;
+
+            if (locked) {
+                // Safety net - if something falls through the cracks and never
+                // properly unlocks (an edge case we didn't account for), don't
+                // leave the app stuck locked forever
+                if (lockSafetyTimeout) clearTimeout(lockSafetyTimeout);
+                lockSafetyTimeout = setTimeout(() => {
+                    console.warn('Interaction lock safety timeout hit - force unlocking');
+                    setInteractionsLocked(false);
+                }, 20000);
+            } else if (lockSafetyTimeout) {
+                clearTimeout(lockSafetyTimeout);
+                lockSafetyTimeout = null;
+            }
+        }
 
         function triggerEmotion(emotion) {
             if (!currentModel) return;
@@ -2039,11 +2095,14 @@
             if (LLM_ZONES.has(zone)) {
                 // Chest/skirt: always routes through the LLM for the line, but
                 // the expression is forced regardless of what comes back.
+                setInteractionsLocked(true);
                 triggerEmotion('shocked');
                 const result = await reportTouch(zone, 'llm');
                 if (result && result.text) {
                     triggerEmotion('shocked'); // force again after response, don't trust any tag
-                    speakDirectly(result.text);
+                    speakDirectly(result.text); // unlocks via audio.onended once she's done
+                } else {
+                    setInteractionsLocked(false); // call failed silently, don't stay stuck locked
                 }
                 return;
             }
@@ -2098,12 +2157,14 @@
             } else {
                 // A proper pet - the mid-hold timer already switched her to happy;
                 // she now actually responds, genuinely happy about it
+                setInteractionsLocked(true);
                 const result = await reportTouch(zone, 'pet_happy');
                 if (result && result.text) {
                     triggerEmotion('happy'); // force again after response, don't trust any tag
-                    speakDirectly(result.text); // audio.onended will settle back to neutral after
+                    speakDirectly(result.text); // unlocks via audio.onended once she's done
                 } else {
                     scheduleExpressionReset(2000); // fallback if the LLM call failed silently
+                    setInteractionsLocked(false);
                 }
             }
         }
@@ -2115,6 +2176,7 @@
             currentModel.buttonMode = true;
 
             const onPointerDown = (event) => {
+                if (interactionsLocked) return;
                 const point = event.data.global;
                 const hitAreas = currentModel.hitTest(point.x, point.y);
                 if (!hitAreas || hitAreas.length === 0) return;
@@ -2174,6 +2236,7 @@
             audio.onended = () => {
                 speakBtn.classList.remove('speaking');
                 speakBtn.textContent = 'Send';
+                setInteractionsLocked(false);
 
                 // Return to neutral a beat after she stops talking, so the
                 // expression doesn't stay frozen until the next message.
@@ -2385,11 +2448,13 @@
             });
 
             const sendMessage = () => {
+                if (interactionsLocked) return;
                 const text = textInput.value.trim();
                 if (!text || !isConnected) return;
 
                 console.log('Sending:', text);
-                
+                setInteractionsLocked(true);
+
                 ws.send(JSON.stringify({
                     type: 'message',
                     text: text

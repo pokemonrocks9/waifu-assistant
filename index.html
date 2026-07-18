@@ -2068,30 +2068,44 @@
                 clearTimeout(pendingExpressionReset);
                 pendingExpressionReset = null;
             }
-            petState = { active: true, zone, startTime: Date.now() };
+            petState = { active: true, zone, startTime: Date.now(), happyTimer: null };
             triggerEmotion('sleeping');
             console.log(`Petting started: ${zone}`);
+
+            // At the hold threshold, switch to happy WHILE STILL BEING PET -
+            // a visible "okay, this counts now" moment - but she still only
+            // speaks once you actually release, never mid-hold.
+            petState.happyTimer = setTimeout(() => {
+                if (petState.active) {
+                    triggerEmotion('happy');
+                    console.log('Pet threshold reached mid-hold - now happy');
+                }
+            }, PET_HOLD_THRESHOLD_MS);
         }
 
         async function handlePetEnd() {
             if (!petState.active) return;
             const duration = Date.now() - petState.startTime;
             const zone = petState.zone;
-            petState = { active: false, zone: null, startTime: 0 };
+            if (petState.happyTimer) clearTimeout(petState.happyTimer);
+            petState = { active: false, zone: null, startTime: 0, happyTimer: null };
 
             console.log(`Petting ended: ${zone} (${duration}ms)`);
 
             if (duration < PET_HOLD_THRESHOLD_MS) {
-                // Too short - she can only respond AFTER release, never mid-hold,
-                // so this doesn't fight with the sleepy expression/animation
-                speakDirectly(pickRandom(["Wait, why'd you stop?", "Aw, already done?"]));
+                // Too short for a real reaction - just settle back quietly
                 triggerEmotion('neutral');
             } else {
-                // Held a proper while - just settle back naturally, no complaint
-                triggerEmotion('neutral');
+                // A proper pet - the mid-hold timer already switched her to happy;
+                // she now actually responds, genuinely happy about it
+                const result = await reportTouch(zone, 'pet_happy');
+                if (result && result.text) {
+                    triggerEmotion('happy'); // force again after response, don't trust any tag
+                    speakDirectly(result.text); // audio.onended will settle back to neutral after
+                } else {
+                    scheduleExpressionReset(2000); // fallback if the LLM call failed silently
+                }
             }
-
-            await reportTouch(zone, 'pet');
         }
 
         function setupTouchInteractions() {

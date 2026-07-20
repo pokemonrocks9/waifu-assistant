@@ -1876,6 +1876,17 @@
                     // loading overlay takes over the screen
                     characterMenu.classList.remove('open');
 
+                    // Also hide the transient position readout if it was left
+                    // showing from a slider drag earlier - this handler closes
+                    // the menu a different way than the outside-click listeners,
+                    // so it needs the same cleanup they do or it gets stuck
+                    // showing stale values until the debug toggle is cycled
+                    const positionDisplay = document.getElementById('position-display');
+                    const togglePositionDisplay = document.getElementById('toggle-position-display');
+                    if (positionDisplay && togglePositionDisplay && !togglePositionDisplay.checked) {
+                        positionDisplay.style.display = 'none';
+                    }
+
                     setTimeout(() => {
                         switchCharacter(char).then(() => {
                             updateSliders(char);

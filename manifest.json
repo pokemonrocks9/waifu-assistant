@@ -1,7 +1,7 @@
 {
   "name": "CPU - Pod Interface",
   "short_name": "CPU Pod",
-  "description": "Meet your AI companion",
+  "description": "Your holographic AI companion",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

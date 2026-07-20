@@ -1791,6 +1791,7 @@
             CHARACTERS.forEach((char, index) => {
                 const item = document.createElement('div');
                 item.className = 'character-item';
+                item.dataset.characterId = char.id;
                 if (index === 0) item.classList.add('active');
                 
                 item.innerHTML = `
@@ -1802,16 +1803,17 @@
                     // Update active state
                     document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
                     item.classList.add('active');
-                    
-                    // Switch character - reloads backend voice/personality
-                    // (with a loading overlay for the burn-in), then loads
-                    // the new Live2D model
-                    switchCharacter(char).then(() => {
-                        updateSliders(char);
-                    });
-                    
-                    // Close menu
+
+                    // Close menu first (mobile: slides down: desktop: slides
+                    // right) and let that animation actually play before the
+                    // loading overlay takes over the screen
                     characterMenu.classList.remove('open');
+
+                    setTimeout(() => {
+                        switchCharacter(char).then(() => {
+                            updateSliders(char);
+                        });
+                    }, 300);
                 });
                 
                 characterList.appendChild(item);
@@ -2613,13 +2615,42 @@
             setupViewportHandling();
             initTestLipSync();
             
-            // Load default character
-            await loadLive2DModel(CHARACTERS[0]);
+            // Ask the backend which character is actually active - it owns
+            // this fact now (persisted to disk, survives restarts/devices),
+            // not something the frontend should assume or track itself
+            let startupCharacter = CHARACTERS[0];
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/character/active`, {
+                    signal: AbortSignal.timeout(5000)
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    const match = CHARACTERS.find(c => c.id === data.character_id);
+                    if (match) {
+                        startupCharacter = match;
+                        console.log(`Backend reports active character: ${data.name}`);
+                    } else {
+                        console.warn(`Backend's active character '${data.character_id}' isn't in the local CHARACTERS list - falling back to default`);
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not reach backend to check active character, defaulting to first in list:', err);
+            }
+
+            // Load whichever character that turned out to be
+            await loadLive2DModel(startupCharacter);
             setupExpressionButtons();
             setupTouchInteractions();
+
+            // Fix the sidebar highlight to match - initCharacterSelector()
+            // defaulted to highlighting the first entry before we knew which
+            // character was actually active, so correct that now
+            document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
+            const activeItem = document.querySelector(`.character-item[data-character-id="${startupCharacter.id}"]`);
+            if (activeItem) activeItem.classList.add('active');
             
-            // Connect to backend
-            connectWebSocket();
+            // Connect to backend, scoped to that same character
+            connectWebSocket(startupCharacter.id);
             
             console.log('✅ System ready!');
         }

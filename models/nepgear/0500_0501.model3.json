@@ -1,0 +1,63 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "0500_0501.moc3",
+    "Textures": [
+      "textures/texture_00.png"
+    ],
+    "Physics": "0500_0501.physics3.json",
+    "Expressions": null,
+    "Motions": {
+      "": [
+        {
+          "File": "motions/0501_01.motion3.json"
+        },
+        {
+          "File": "motions/0501_02_in.motion3.json"
+        },
+        {
+          "File": "motions/0501_02_loop.motion3.json"
+        },
+        {
+          "File": "motions/0501_02_out.motion3.json"
+        },
+        {
+          "File": "motions/0501_03_in.motion3.json"
+        },
+        {
+          "File": "motions/0501_03_loop.motion3.json"
+        },
+        {
+          "File": "motions/0501_03_out.motion3.json"
+        },
+        {
+          "File": "motions/0501_04_in.motion3.json"
+        },
+        {
+          "File": "motions/0501_04_loop.motion3.json"
+        },
+        {
+          "File": "motions/0501_04_out.motion3.json"
+        }
+      ]
+    }
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": [
+        "ParamEyeLOpen",
+        "ParamEyeROpen"
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": [
+        "ParamMouthOpenY",
+        "ParamMouthForm"
+      ]
+    }
+  ]
+}

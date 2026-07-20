@@ -1,7 +1,7 @@
 {
-  "name": "Compa - Pod Interface",
-  "short_name": "Compa",
-  "description": "Compa, your AI companion",
+  "name": "CPU - Pod Interface",
+  "short_name": "CPU Pod",
+  "description": "Meet your AI companion",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

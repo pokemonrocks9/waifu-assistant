@@ -935,7 +935,7 @@
     <!-- Text input -->
     <div id="text-input-container">
         <button id="mobile-menu-btn" aria-label="Open menu">☰</button>
-        <input type="text" id="text-input" placeholder="Say something to Compa…">
+        <input type="text" id="text-input" placeholder="Say something…">
         <button id="mic-btn" aria-label="Talk to Compa" title="Talk to Compa">🎤</button>
         <button id="speak-btn">Send</button>
     </div>
@@ -1368,6 +1368,10 @@
                 currentModel = model;
                 currentCharacter = character;
                 applyCharacterZoneConfig(character);
+                const textInputEl = document.getElementById('text-input');
+                if (textInputEl && !textInputEl.disabled) {
+                    textInputEl.placeholder = `Say something to ${character.name}…`;
+                }
 
                 // Position and scale the model
                 positionModel(model, character);
@@ -2132,7 +2136,7 @@
             }
             if (textInput) {
                 textInput.disabled = locked;
-                textInput.placeholder = locked ? 'Waiting...' : 'Say something to Compa…';
+                textInput.placeholder = locked ? 'Waiting...' : `Say something to ${currentCharacter?.name || ''}…`;
             }
             if (micBtn) micBtn.disabled = locked;
 
@@ -2434,8 +2438,11 @@
             window.addEventListener('touchend', onPointerUp);
         }
 
+        let activePlaybackId = 0; // tracks the most recent audio playback, so a stale/superseded audio's onended can't incorrectly clear state for a newer one still playing
+
         function playAudioWithLipSync(audioBase64) {
             const audio = new Audio('data:audio/wav;base64,' + audioBase64);
+            const thisPlaybackId = ++activePlaybackId;
             
             audio.onloadedmetadata = () => {
                 const durationMs = audio.duration * 1000;
@@ -2449,16 +2456,23 @@
             const speakBtn = document.getElementById('speak-btn');
 
             audio.play().then(() => {
+                if (thisPlaybackId !== activePlaybackId) return; // superseded before it even started
                 speakBtn.classList.add('speaking');
                 speakBtn.textContent = '🔊';
             }).catch(err => {
                 console.warn('Audio playback blocked (likely browser autoplay restriction):', err);
+                if (thisPlaybackId !== activePlaybackId) return;
                 // Don't leave the button stuck showing "speaking" if playback never started
                 speakBtn.classList.remove('speaking');
                 speakBtn.textContent = 'Send';
             });
 
             audio.onended = () => {
+                // A stale/superseded audio finishing shouldn't clear state for
+                // whatever's actually playing now - only the most recent
+                // playback is allowed to affect the speaking indicator/lock
+                if (thisPlaybackId !== activePlaybackId) return;
+
                 speakBtn.classList.remove('speaking');
                 speakBtn.textContent = 'Send';
                 setInteractionsLocked(false);
@@ -2647,7 +2661,7 @@
                 isListening = false;
                 micBtn.classList.remove('listening');
                 micBtn.textContent = '🎤';
-                textInput.placeholder = 'Say something to Compa…';
+                textInput.placeholder = `Say something to ${currentCharacter?.name || ''}…`;
             };
 
             micBtn.addEventListener('click', () => {

@@ -1008,6 +1008,48 @@
                     }
                 }
             },
+
+            {
+                id: 'nepgear',
+                name: 'Nepgear',
+                description: 'Hyperdimension Neptunia',
+                modelUrl: CUSTOM_MODELS_PATH + 'nepgear/0500_0501.model3.json',
+                // Starting guesses - untested, adjust via the position debug
+                // panel once she's actually loaded and visible
+                scale: 0.30,
+                scaleMobile: 0.24,
+                position: { x: 0.02, y: 0.24 },
+                positionMobile: { x: 0.13, y: 0.23 },
+                isCustom: true,
+
+                // Minimal placeholder config - her model uses generic
+                // ArtMesh/Part numbering (no descriptive hit-area names like
+                // Compa's rig had), so touch zones need empirical calibration
+                // later (same tap-and-report process we used for Compa's
+                // expressions). Emotion mapping below is also a guess pending
+                // visual confirmation of what each exp_XX file actually shows -
+                // only exp_02 (PARAM_RAGE) is confirmed as angry so far.
+                zoneConfig: {
+                    emotionToExpression: {
+                        neutral: 0,   // exp_01 - confirmed neutral/reset (all params 0)
+                        angry: 1,     // exp_02 - confirmed PARAM_RAGE
+                        happy: 2,     // exp_03 - UNCONFIRMED GUESS
+                        sad: 3,       // exp_04 - UNCONFIRMED GUESS
+                        sympathetic: 4,  // exp_05 - UNCONFIRMED GUESS
+                        surprised: 5,    // exp_06 - UNCONFIRMED GUESS
+                        sleeping: 6,     // exp_07 - UNCONFIRMED GUESS
+                        crying: 7,       // exp_08 - UNCONFIRMED GUESS
+                        shocked: 8,      // exp_11 - UNCONFIRMED GUESS
+                        embarrassed: 9   // exp_12 - UNCONFIRMED GUESS
+                        // exp_13 and exp_18 also exist but aren't mapped yet
+                    },
+                    petZones: [],      // no hit-areas defined yet - petting won't register until calibrated
+                    llmZones: [],      // same - chest/skirt-equivalent zones not yet identified
+                    petHoldThresholdMs: 2500,
+                    zoneLines: {},
+                    zoneExpressions: {}
+                }
+            },
             
             // Add more Neptunia characters here - copy the zoneConfig block above
             // and adjust to match the new model's actual hit-area names/expression

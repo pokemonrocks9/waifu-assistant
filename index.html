@@ -1004,6 +1004,7 @@
         // Global state
         let app;
         let currentModel = null;
+        let pendingCharacterSwitch = null; // set when the backend flags a mid-conversation switch request
         let currentCharacter = null;
         let ws = null;
         let isConnected = false;
@@ -1970,10 +1971,23 @@
                     // Display response in console for now
                     console.log('Assistant:', data.text);
 
+                    // Lock here too (not just at send-time) - covers the
+                    // unsolicited greeting-on-connect case, which arrives
+                    // without any user action having triggered a lock yet.
+                    // Harmless to also re-set this for normal replies where
+                    // sendMessage/handlePoke already locked things.
+                    setInteractionsLocked(true);
+
                     // Trigger her expression to match the emotional tone of this reply
                     if (data.emotion) {
                         triggerEmotion(data.emotion);
                     }
+
+                    // If the backend flagged a character switch (user asked to
+                    // talk to someone else), hold onto it - the actual switch
+                    // happens in audio.onended, once she's genuinely finished
+                    // speaking her handoff line, never mid-sentence
+                    pendingCharacterSwitch = data.switch_to || null;
                     
                     // Request TTS
                     ws.send(JSON.stringify({
@@ -2371,6 +2385,25 @@
                 speakBtn.classList.remove('speaking');
                 speakBtn.textContent = 'Send';
                 setInteractionsLocked(false);
+
+                // If a character switch was flagged on this response, she's
+                // now genuinely done saying her handoff line - perform the
+                // actual switch (same loading-screen flow as tapping the
+                // sidebar) rather than doing it mid-sentence
+                if (pendingCharacterSwitch) {
+                    const targetId = pendingCharacterSwitch;
+                    pendingCharacterSwitch = null;
+                    const targetCharacter = CHARACTERS.find(c => c.id === targetId);
+                    if (targetCharacter) {
+                        switchCharacter(targetCharacter);
+                        document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
+                        const item = document.querySelector(`.character-item[data-character-id="${targetId}"]`);
+                        if (item) item.classList.add('active');
+                    } else {
+                        console.warn(`Backend requested switch to unknown character '${targetId}'`);
+                    }
+                    return; // skip the normal neutral-reset/mic-restart below - switchCharacter handles everything now
+                }
 
                 // Return to neutral a beat after she stops talking, so the
                 // expression doesn't stay frozen until the next message.

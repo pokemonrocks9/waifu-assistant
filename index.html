@@ -653,6 +653,10 @@
         }
 
         /* Hide edit controls when toggled off */
+        .hidden {
+            display: none;
+        }
+
         #edit-controls.hidden {
             display: none;
         }
@@ -757,6 +761,13 @@
     <div id="loading">
         <div class="spinner"></div>
         <div>Initializing hologram</div>
+    </div>
+
+    <div id="character-switch-loading" class="hidden" style="position: fixed; inset: 0; z-index: 200; background: rgba(5, 7, 13, 0.92); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;">
+        <div class="spinner"></div>
+        <div id="character-switch-loading-text" style="font-family: var(--font-mono); font-size: 13px; color: var(--text); text-align: center; padding: 0 20px;">
+            Loading character...
+        </div>
     </div>
 
     <div id="error"></div>
@@ -937,10 +948,46 @@
                 scaleMobile: 0.24,
                 position: { x: 0.02, y: 0.24 },
                 positionMobile: { x: 0.13, y: 0.23 },
-                isCustom: true
+                isCustom: true,
+
+                // Per-character reaction config - moves into the active
+                // module-level variables on load/switch (see applyCharacterZoneConfig)
+                zoneConfig: {
+                    emotionToExpression: {
+                        neutral: 0, happy: 1, angry: 2, sad: 3, sympathetic: 4,
+                        surprised: 5, sleeping: 6, crying: 7, shocked: 8, embarrassed: 9
+                    },
+                    petZones: ['head', 'hair_back'],
+                    llmZones: ['chest', 'skirt'],
+                    petHoldThresholdMs: 2500,
+                    zoneLines: {
+                        face: { 1: null, 2: ["Hey, careful!", "Hehe, that tickles a little!"] },
+                        hand_L: { 2: ["That tickles!", "Hehe, careful there!"] },
+                        hand_R: { 2: ["That tickles!", "Hehe, careful there!"] },
+                        arm_L: { 2: ["Tee-hee, that tickles!"] },
+                        arm_R: { 2: ["Tee-hee, that tickles!"] },
+                        neck: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
+                        choker: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
+                        leg_L: { 1: ["Um, that's a little forward..."], 2: ["Hey! That startled me!"] },
+                        leg_R: { 1: ["Um, that's a little forward..."], 2: ["Hey! That startled me!"] }
+                    },
+                    zoneExpressions: {
+                        face: { 1: 'surprised', 2: 'happy' },
+                        hand_L: { 1: 'happy', 2: 'happy' },
+                        hand_R: { 1: 'happy', 2: 'happy' },
+                        arm_L: { 1: 'happy', 2: 'happy' },
+                        arm_R: { 1: 'happy', 2: 'happy' },
+                        neck: { 1: 'embarrassed', 2: 'embarrassed' },
+                        choker: { 1: 'embarrassed', 2: 'embarrassed' },
+                        leg_L: { 1: 'embarrassed', 2: 'shocked' },
+                        leg_R: { 1: 'embarrassed', 2: 'shocked' }
+                    }
+                }
             },
             
-            // Add more Neptunia characters here:
+            // Add more Neptunia characters here - copy the zoneConfig block above
+            // and adjust to match the new model's actual hit-area names/expression
+            // indices (confirm both via the debug panel before assuming they match):
             /*
             {
                 id: 'neptune',
@@ -1253,6 +1300,7 @@
 
                 currentModel = model;
                 currentCharacter = character;
+                applyCharacterZoneConfig(character);
 
                 // Position and scale the model
                 positionModel(model, character);
@@ -1755,8 +1803,10 @@
                     document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
                     item.classList.add('active');
                     
-                    // Load character
-                    loadLive2DModel(char).then(() => {
+                    // Switch character - reloads backend voice/personality
+                    // (with a loading overlay for the burn-in), then loads
+                    // the new Live2D model
+                    switchCharacter(char).then(() => {
                         updateSliders(char);
                     });
                     
@@ -1849,10 +1899,60 @@
         }
 
         // WebSocket connection
-        function connectWebSocket() {
-            console.log(`Connecting to WebSocket: ${BACKEND_URL}/ws`);
+        // Orchestrates switching to a different character: shows a loading
+        // overlay for the duration (this is a real burn-in - RVC model reload +
+        // Ollama warmup on the backend - not an instant switch), then reconnects
+        // the websocket scoped to the new character and loads their Live2D model.
+        async function switchCharacter(character) {
+            const overlay = document.getElementById('character-switch-loading');
+            const overlayText = document.getElementById('character-switch-loading-text');
+
+            overlay.classList.remove('hidden');
+            overlayText.textContent = `Loading ${character.name}...`;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/character/switch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ character_id: character.id })
+                });
+                const result = await response.json();
+
+                if (result.error) {
+                    console.error('Character load failed:', result.error);
+                    overlayText.textContent = `Failed to load: ${result.error}`;
+                    setTimeout(() => overlay.classList.add('hidden'), 3000);
+                    return;
+                }
+
+                console.log(`Character switch result:`, result);
+
+                // Reconnect the websocket scoped to the new character, so
+                // memory/personality are correctly isolated from here on
+                if (ws) {
+                    ws.onclose = null; // don't trigger the normal auto-reconnect logic for this deliberate switch
+                    ws.close();
+                }
+                connectWebSocket(character.id);
+
+                // Load the new Live2D model (this also applies its zoneConfig
+                // via applyCharacterZoneConfig, called inside loadLive2DModel)
+                await loadLive2DModel(character);
+
+                overlay.classList.add('hidden');
+            } catch (err) {
+                console.error('Character load request failed:', err);
+                overlayText.textContent = 'Failed to load character - check connection';
+                setTimeout(() => overlay.classList.add('hidden'), 3000);
+            }
+        }
+
+        function connectWebSocket(characterId) {
+            const wsBase = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws';
+            const wsUrl = characterId ? `${wsBase}?character=${encodeURIComponent(characterId)}` : wsBase;
+            console.log(`Connecting to WebSocket: ${wsUrl}`);
             
-            ws = new WebSocket(BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws');
+            ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
                 console.log('WebSocket connected!');
@@ -1900,8 +2000,10 @@
             };
         }
 
-        // Maps emotion labels the LLM tags responses with to expression indices
-        const EMOTION_TO_EXPRESSION = {
+        // Maps emotion labels the LLM tags responses with to expression indices -
+        // reassigned per-character by applyCharacterZoneConfig() on load/switch.
+        // Defaults to Compa's mapping so nothing breaks before that first runs.
+        let EMOTION_TO_EXPRESSION = {
             neutral: 0,
             happy: 1,
             angry: 2,
@@ -1980,13 +2082,15 @@
         // expression is forced client-side (never left to the LLM's choice)
         // so boundary-setting behavior is guaranteed, not roleplay-driven.
 
-        const PET_ZONES = new Set(['head', 'hair_back']);
-        const LLM_ZONES = new Set(['chest', 'skirt']);
-        const PET_HOLD_THRESHOLD_MS = 2500;
-        const TOUCH_COOLDOWN_MS = 1200;
-        const ESCALATION_RESET_MS = 6000; // no touches in this zone for this long -> escalation resets
+        // Reassigned per-character by applyCharacterZoneConfig() on load/switch.
+        // Defaults to Compa's config so nothing breaks before that first runs.
+        let PET_ZONES = new Set(['head', 'hair_back']);
+        let LLM_ZONES = new Set(['chest', 'skirt']);
+        let PET_HOLD_THRESHOLD_MS = 2500;
+        const TOUCH_COOLDOWN_MS = 1200; // not character-specific, stays global
+        const ESCALATION_RESET_MS = 6000; // not character-specific, stays global
 
-        const ZONE_LINES = {
+        let ZONE_LINES = {
             face: {
                 1: null, // just expression, no line needed at first poke
                 2: ["Hey, careful!", "Hehe, that tickles a little!"]
@@ -2001,7 +2105,7 @@
             leg_R: { 1: ["Um, that's a little forward..."], 2: ["Hey! That startled me!"] }
         };
 
-        const ZONE_EXPRESSIONS = {
+        let ZONE_EXPRESSIONS = {
             face: { 1: 'surprised', 2: 'happy' },
             hand_L: { 1: 'happy', 2: 'happy' },
             hand_R: { 1: 'happy', 2: 'happy' },
@@ -2016,6 +2120,34 @@
         let lastTouchTime = 0;
         let zoneEscalation = {}; // zone -> { level, lastTouch }
         let petState = { active: false, zone: null, startTime: 0 };
+
+        // Applies a character's emotion/zone config to the active module-level
+        // variables above. Called whenever a character's model finishes loading
+        // (initial load or switching characters) - falls back to whatever's
+        // currently set for any field a character doesn't define, so a partial
+        // config won't silently break other reaction types.
+        function applyCharacterZoneConfig(character) {
+            const cfg = character?.zoneConfig;
+            if (!cfg) {
+                console.warn(`Character '${character?.id}' has no zoneConfig - keeping current reaction settings`);
+                return;
+            }
+
+            if (cfg.emotionToExpression) EMOTION_TO_EXPRESSION = cfg.emotionToExpression;
+            if (cfg.petZones) PET_ZONES = new Set(cfg.petZones);
+            if (cfg.llmZones) LLM_ZONES = new Set(cfg.llmZones);
+            if (cfg.petHoldThresholdMs !== undefined) PET_HOLD_THRESHOLD_MS = cfg.petHoldThresholdMs;
+            if (cfg.zoneLines) ZONE_LINES = cfg.zoneLines;
+            if (cfg.zoneExpressions) ZONE_EXPRESSIONS = cfg.zoneExpressions;
+
+            // Reset per-session touch state so a switch doesn't carry over
+            // escalation counters or an in-progress pet from the last character
+            lastTouchTime = 0;
+            zoneEscalation = {};
+            petState = { active: false, zone: null, startTime: 0 };
+
+            console.log(`Applied zone config for '${character.name}'`);
+        }
 
         function pickRandom(arr) {
             return arr[Math.floor(Math.random() * arr.length)];

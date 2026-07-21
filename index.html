@@ -858,6 +858,40 @@
                 </div>
             </div>
 
+            <!-- Live voice tuning - test values before hardcoding them into
+                 CHARACTERS. Doesn't persist anything, purely for testing. -->
+            <div class="settings-section">
+                <h3>Voice tuning (testing)</h3>
+                <p class="form-hint mb-2">Adjust and apply to hear it live. Once you like it, tell me the values to hardcode.</p>
+
+                <div class="control-group">
+                    <label>Base voice</label>
+                    <select id="voice-tune-select" style="width: 100%; background: var(--panel); border: 1px solid var(--hairline); border-radius: 6px; padding: 8px 10px; color: var(--text); font-family: var(--font-display); font-size: 13px;">
+                        <option value="en-US-EmmaNeural">Emma - Cheerful</option>
+                        <option value="en-US-AvaNeural">Ava - Expressive, Caring</option>
+                        <option value="en-US-JennyNeural">Jenny - Friendly, Comfort</option>
+                        <option value="en-US-AriaNeural">Aria - Positive, Confident</option>
+                        <option value="en-US-AnaNeural">Ana - Cute, Cartoon</option>
+                        <option value="en-US-MichelleNeural">Michelle - Friendly, Pleasant</option>
+                        <option value="en-US-GuyNeural">Guy (male) - Passion</option>
+                        <option value="en-US-ChristopherNeural">Christopher (male) - Reliable</option>
+                        <option value="en-US-RogerNeural">Roger (male) - Lively</option>
+                        <option value="en-US-EricNeural">Eric (male) - Rational</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Pitch</label>
+                    <div class="control-row">
+                        <input type="range" id="voice-tune-pitch" min="-12" max="20" step="1" value="10">
+                        <span id="voice-tune-pitch-value">10</span>
+                    </div>
+                </div>
+
+                <button class="btn secondary" id="voice-tune-apply" style="width: 100%;">Apply to current character</button>
+                <p id="voice-tune-status" class="form-hint mt-2" style="opacity: 0.7;"></p>
+            </div>
+
             <!-- Live editing controls -->
             <div id="edit-controls">
                 <h3>Position &amp; scale</h3>
@@ -1274,10 +1308,74 @@
             const panel = document.getElementById('debug-settings-panel');
             if (e.target.checked) {
                 panel.classList.remove('hidden');
+                setupVoiceTuning(); // pre-fill with current character's actual values on open
             } else {
                 panel.classList.add('hidden');
             }
         });
+
+        async function setupVoiceTuning() {
+            const pitchSlider = document.getElementById('voice-tune-pitch');
+            const pitchValue = document.getElementById('voice-tune-pitch-value');
+            const voiceSelect = document.getElementById('voice-tune-select');
+            const applyBtn = document.getElementById('voice-tune-apply');
+            const statusEl = document.getElementById('voice-tune-status');
+
+            // Pre-fill with whatever the backend is ACTUALLY currently using
+            // for this character, not a guess - so the slider starts honest
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/character/active`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.rvc_pitch !== undefined) pitchSlider.value = data.rvc_pitch;
+                    if (data.edge_voice) {
+                        const matchingOption = [...voiceSelect.options].find(o => o.value === data.edge_voice);
+                        if (matchingOption) voiceSelect.value = data.edge_voice;
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not fetch current voice config to pre-fill tuning UI:', err);
+            }
+            pitchValue.textContent = pitchSlider.value;
+
+            pitchSlider.oninput = () => {
+                pitchValue.textContent = pitchSlider.value;
+            };
+
+            applyBtn.onclick = async () => {
+                if (!currentCharacter) return;
+                applyBtn.disabled = true;
+                applyBtn.textContent = 'Reloading voice...';
+                statusEl.textContent = '';
+
+                try {
+                    const response = await fetch(`${BACKEND_URL}/api/character/voice-tune`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            character_id: currentCharacter.id,
+                            voice: voiceSelect.value,
+                            pitch: parseInt(pitchSlider.value, 10)
+                        })
+                    });
+                    const result = await response.json();
+
+                    if (result.error) {
+                        statusEl.textContent = `Failed: ${result.error}`;
+                        statusEl.style.color = 'var(--danger)';
+                    } else {
+                        statusEl.textContent = `Applied - voice: ${result.voice}, pitch: ${result.pitch}. Say something to hear it.`;
+                        statusEl.style.color = 'var(--cyan)';
+                    }
+                } catch (err) {
+                    statusEl.textContent = `Request failed: ${err.message}`;
+                    statusEl.style.color = 'var(--danger)';
+                } finally {
+                    applyBtn.disabled = false;
+                    applyBtn.textContent = 'Apply to current character';
+                }
+            };
+        }
 
         function getExpressionLabelKey(characterId, index) {
             return `expr_label_${characterId}_${index}`;
@@ -1333,7 +1431,7 @@
                 labelInput.placeholder = `What is expression ${i}?`;
                 labelInput.value = savedLabel;
                 labelInput.style.cssText = 'flex: 1; background: var(--panel); border: 1px solid var(--hairline); border-radius: 6px; padding: 6px 10px; color: var(--text); font-family: var(--font-display); font-size: 12px;';
-                labelInput.addEventListener('change', () => {
+                labelInput.addEventListener('input', () => {
                     localStorage.setItem(getExpressionLabelKey(characterId, i), labelInput.value.trim());
                 });
 
@@ -1363,15 +1461,20 @@
             copyConfigBtn.style.marginTop = '4px';
             copyConfigBtn.addEventListener('click', () => {
                 const lines = [];
-                for (let i = 0; i < count; i++) {
-                    const label = localStorage.getItem(getExpressionLabelKey(characterId, i));
+                const inputs = container.querySelectorAll('input[type="text"]');
+                inputs.forEach((input, i) => {
+                    // Read live from the DOM first (guaranteed current, even
+                    // if the 'input' listener somehow hasn't saved it yet),
+                    // falling back to localStorage as a backup
+                    const label = input.value.trim() || localStorage.getItem(getExpressionLabelKey(characterId, i)) || '';
                     if (label) {
-                        const key = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+                        localStorage.setItem(getExpressionLabelKey(characterId, i), label); // ensure it's saved too
+                        const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '');
                         if (key) {
                             lines.push(`    ${key}: ${i}, // "${label}"`);
                         }
                     }
-                }
+                });
                 const snippet = lines.length
                     ? `emotionToExpression: {\n${lines.join('\n')}\n}`
                     : '// No labels entered yet - type names in the fields above first';

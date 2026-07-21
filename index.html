@@ -1025,8 +1025,14 @@
                         arm_R: { 2: ["Tee-hee, that tickles!"] },
                         neck: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
                         choker: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
-                        leg_L: { 1: ["Um, that's a little forward..."], 2: ["Hey! That startled me!"] },
-                        leg_R: { 1: ["Um, that's a little forward..."], 2: ["Hey! That startled me!"] }
+                        leg_L: {
+                            1: ["Um, that's a little forward...", "H-hey, that's kind of close...", "Oh! Um, please be careful there."],
+                            2: ["Hey! That startled me!", "Whoa, please don't do that!", "Hey, please don't!"]
+                        },
+                        leg_R: {
+                            1: ["Um, that's a little forward...", "H-hey, that's kind of close...", "Oh! Um, please be careful there."],
+                            2: ["Hey! That startled me!", "Whoa, please don't do that!", "Hey, please don't!"]
+                        }
                     },
                     zoneExpressions: {
                         face: { 1: 'surprised', 2: 'happy' },
@@ -1097,7 +1103,20 @@
                     zoneLines: {
                         hand_R: { 2: ["That tickles!", "Hehe, careful there!"] },
                         hand_L: { 2: ["That tickles!", "Hehe, careful there!"] },
-                        legs: { 1: ["Um, that's a little forward..."], 2: ["Hey! That startled me!"] }
+                        legs: {
+                            1: [
+                                "Um, that's a little forward...",
+                                "H-hey, that's kind of close...",
+                                "Oh! Um, please be careful there.",
+                                "That's a bit much, um, please don't."
+                            ],
+                            2: [
+                                "Hey! That startled me!",
+                                "Whoa, please don't do that!",
+                                "H-hey! That really caught me off guard!",
+                                "Please, that's not okay!"
+                            ]
+                        }
                     },
                     zoneExpressions: {
                         hand_R: { 1: 'happy', 2: 'happy' },
@@ -2479,8 +2498,14 @@
             arm_R: { 2: ["Tee-hee, that tickles!"] },
             neck: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
             choker: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
-            leg_L: { 1: ["Um, that's a little forward..."], 2: ["Hey! That startled me!"] },
-            leg_R: { 1: ["Um, that's a little forward..."], 2: ["Hey! That startled me!"] }
+            leg_L: {
+                1: ["Um, that's a little forward...", "H-hey, that's kind of close...", "Oh! Um, please be careful there."],
+                2: ["Hey! That startled me!", "Whoa, please don't do that!", "Hey, please don't!"]
+            },
+            leg_R: {
+                1: ["Um, that's a little forward...", "H-hey, that's kind of close...", "Oh! Um, please be careful there."],
+                2: ["Hey! That startled me!", "Whoa, please don't do that!", "Hey, please don't!"]
+            }
         };
 
         let ZONE_EXPRESSIONS = {

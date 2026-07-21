@@ -6,7 +6,56 @@
       "textures/texture_00.png"
     ],
     "Physics": "0500_0501.physics3.json",
-    "Expressions": null,
+    "Expressions": [
+      {
+        "Name": "exp_01",
+        "File": "exps/01.exp3.json"
+      },
+      {
+        "Name": "exp_02",
+        "File": "exps/02.exp3.json"
+      },
+      {
+        "Name": "exp_03",
+        "File": "exps/03.exp3.json"
+      },
+      {
+        "Name": "exp_04",
+        "File": "exps/04.exp3.json"
+      },
+      {
+        "Name": "exp_05",
+        "File": "exps/05.exp3.json"
+      },
+      {
+        "Name": "exp_06",
+        "File": "exps/06.exp3.json"
+      },
+      {
+        "Name": "exp_07",
+        "File": "exps/07.exp3.json"
+      },
+      {
+        "Name": "exp_08",
+        "File": "exps/08.exp3.json"
+      },
+      {
+        "Name": "exp_11",
+        "File": "exps/11.exp3.json"
+      },
+      {
+        "Name": "exp_12",
+        "File": "exps/12.exp3.json"
+      },
+      {
+        "Name": "exp_13",
+        "File": "exps/13.exp3.json"
+      },
+      {
+        "Name": "exp_18",
+        "File": "exps/18.exp3.json"
+      }
+    ],
     "Motions": {
       "": [
         {

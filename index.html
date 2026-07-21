@@ -1707,6 +1707,16 @@
                         // Normalize to 0-1 range
                         let rawVolume = average / 255.0;
 
+                        // TEMP DEBUG: comparing noise-floor behavior between characters
+                        // during pauses. Remove once we've confirmed/ruled out the
+                        // noise-gate theory. Throttled to ~5/sec so it's readable.
+                        if (!lipSyncState._lastDebugLog || Date.now() - lipSyncState._lastDebugLog > 200) {
+                            lipSyncState._lastDebugLog = Date.now();
+                            console.log(
+                                `🔊 [${currentCharacter?.id || '?'}] rawVolume=${rawVolume.toFixed(4)} gateOpen=${rawVolume >= 0.06}`
+                            );
+                        }
+
                         // Noise gate: sentence pauses aren't true digital silence,
                         // the analyser still reads a small noise-floor value there.
                         // A flat +/-0.1 jitter applied on top of that used to push

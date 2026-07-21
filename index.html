@@ -1293,8 +1293,11 @@
         }
 
         // Toggle raw parameter panel visibility, building it lazily on first open
+        let rawParamsPanelOpen = false; // when true, updateLipSync skips writing mouth params so manual slider testing isn't immediately overwritten
+
         document.getElementById('toggle-raw-params').addEventListener('change', (e) => {
             const panel = document.getElementById('raw-params-panel');
+            rawParamsPanelOpen = e.target.checked;
             if (e.target.checked) {
                 panel.classList.remove('hidden');
                 if (document.getElementById('raw-params-list').children.length === 0) {
@@ -1789,7 +1792,12 @@
                 lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * smoothing;
 
                 // Use setParameterValueById to set absolute value
-                if (internalModel.coreModel && typeof internalModel.coreModel.setParameterValueById === 'function') {
+                // (skipped while the raw parameter debug panel is open, so manual
+                // slider testing there isn't immediately overwritten every frame -
+                // that overwrite was why the ParamMouthOpenY slider looked "broken")
+                if (rawParamsPanelOpen) {
+                    // do nothing - let manual panel input stand
+                } else if (internalModel.coreModel && typeof internalModel.coreModel.setParameterValueById === 'function') {
                     internalModel.coreModel.setParameterValueById('ParamMouthOpenY', lipSyncState.currentMouthOpen);
                     
                     if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {

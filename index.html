@@ -1729,8 +1729,18 @@
                         if (rawVolume < noiseGate) {
                             volume = 0;
                         } else {
-                            // Apply curve for more natural movement
-                            volume = Math.pow(rawVolume, 0.5); // Square root for softer curve
+                            // Soft-knee ramp instead of a hard cutoff: at rawVolume ==
+                            // noiseGate this evaluates to sqrt(0) == 0, so there's no
+                            // discontinuity to snap across. The old version applied
+                            // Math.pow() straight to rawVolume, which meant crossing
+                            // the gate jumped instantly from 0 to sqrt(noiseGate) (~0.245)
+                            // in a single frame - since real speech hovers right around
+                            // the gate during pauses, that produced a visible one-frame
+                            // mouth pop-open-then-shut every time it flickered across
+                            // the boundary. Rescaling into 0-1 range above the gate
+                            // before curving removes that jump entirely.
+                            const above = (rawVolume - noiseGate) / (1 - noiseGate);
+                            volume = Math.pow(above, 0.5); // Square root for softer curve
 
                             // Slight randomness for natural feel, scaled by volume so it
                             // can't push a near-silent reading back above the gate
@@ -1761,6 +1771,17 @@
                         lipSyncState.targetMouthOpen = 0;
                         lipSyncState.audioAnalyzer = null;
                         lipSyncState.audioDataArray = null;
+                        // Reset expression to neutral the instant speaking actually
+                        // ends, rather than leaving the mid-speech expression (e.g.
+                        // "happy") holding other mouth-adjacent parameters while
+                        // ParamMouthOpenY independently collapses to 0 - that mismatch
+                        // is what produced a jarring sideways mouth shape right as she
+                        // finished talking. (audio.onended still separately handles
+                        // the mic-restart/switch-handoff timing on its own delay.)
+                        if (!lipSyncState._neutralResetDone) {
+                            lipSyncState._neutralResetDone = true;
+                            triggerEmotion('neutral');
+                        }
                     }
                 }
 
@@ -1821,6 +1842,7 @@
             lipSyncState.isSpeaking = true;
             lipSyncState.speakingStartTime = Date.now();
             lipSyncState.speakingDuration = durationMs;
+            lipSyncState._neutralResetDone = false;
             console.log(`🗣️ Started lip sync for ${durationMs}ms (${(durationMs/1000).toFixed(2)}s)`);
         }
 

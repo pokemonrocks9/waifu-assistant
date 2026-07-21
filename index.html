@@ -1127,6 +1127,7 @@
         let app;
         let currentModel = null;
         let pendingCharacterSwitch = null; // set when the backend flags a mid-conversation switch request
+        let pendingSwitchReason = null; // the user's original message, for the new character's handoff greeting to reference
         let currentCharacter = null;
         let ws = null;
         let isConnected = false;
@@ -2174,7 +2175,7 @@
         // overlay for the duration (this is a real burn-in - RVC model reload +
         // Ollama warmup on the backend - not an instant switch), then reconnects
         // the websocket scoped to the new character and loads their Live2D model.
-        async function switchCharacter(character, summonedByCharacterId = null) {
+        async function switchCharacter(character, summonedByCharacterId = null, handoffReason = null) {
             const overlay = document.getElementById('character-switch-loading');
             const overlayText = document.getElementById('character-switch-loading-text');
 
@@ -2204,7 +2205,7 @@
                     ws.onclose = null; // don't trigger the normal auto-reconnect logic for this deliberate switch
                     ws.close();
                 }
-                connectWebSocket(character.id, summonedByCharacterId);
+                connectWebSocket(character.id, summonedByCharacterId, handoffReason);
 
                 // Load the new Live2D model (this also applies its zoneConfig
                 // via applyCharacterZoneConfig, called inside loadLive2DModel)
@@ -2218,11 +2219,12 @@
             }
         }
 
-        function connectWebSocket(characterId, summonedByCharacterId = null) {
+        function connectWebSocket(characterId, summonedByCharacterId = null, handoffReason = null) {
             const wsBase = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws';
             const params = new URLSearchParams();
             if (characterId) params.set('character', characterId);
             if (summonedByCharacterId) params.set('summoned_by', summonedByCharacterId);
+            if (handoffReason) params.set('handoff_reason', handoffReason);
             const query = params.toString();
             const wsUrl = query ? `${wsBase}?${query}` : wsBase;
             console.log(`Connecting to WebSocket: ${wsUrl}`);
@@ -2275,6 +2277,7 @@
                     // happens in audio.onended, once she's genuinely finished
                     // speaking her handoff line, never mid-sentence
                     pendingCharacterSwitch = data.switch_to || null;
+                    pendingSwitchReason = data.switch_reason || null;
                     
                     // Request TTS
                     ws.send(JSON.stringify({
@@ -2715,11 +2718,13 @@
                 // sidebar) rather than doing it mid-sentence
                 if (pendingCharacterSwitch) {
                     const targetId = pendingCharacterSwitch;
+                    const reason = pendingSwitchReason;
                     pendingCharacterSwitch = null;
+                    pendingSwitchReason = null;
                     const summonerId = currentCharacter?.id || null; // capture before it gets overwritten
                     const targetCharacter = CHARACTERS.find(c => c.id === targetId);
                     if (targetCharacter) {
-                        switchCharacter(targetCharacter, summonerId);
+                        switchCharacter(targetCharacter, summonerId, reason);
                         document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
                         const item = document.querySelector(`.character-item[data-character-id="${targetId}"]`);
                         if (item) item.classList.add('active');

@@ -2174,7 +2174,7 @@
         // overlay for the duration (this is a real burn-in - RVC model reload +
         // Ollama warmup on the backend - not an instant switch), then reconnects
         // the websocket scoped to the new character and loads their Live2D model.
-        async function switchCharacter(character) {
+        async function switchCharacter(character, summonedByCharacterId = null) {
             const overlay = document.getElementById('character-switch-loading');
             const overlayText = document.getElementById('character-switch-loading-text');
 
@@ -2204,7 +2204,7 @@
                     ws.onclose = null; // don't trigger the normal auto-reconnect logic for this deliberate switch
                     ws.close();
                 }
-                connectWebSocket(character.id);
+                connectWebSocket(character.id, summonedByCharacterId);
 
                 // Load the new Live2D model (this also applies its zoneConfig
                 // via applyCharacterZoneConfig, called inside loadLive2DModel)
@@ -2218,9 +2218,13 @@
             }
         }
 
-        function connectWebSocket(characterId) {
+        function connectWebSocket(characterId, summonedByCharacterId = null) {
             const wsBase = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws';
-            const wsUrl = characterId ? `${wsBase}?character=${encodeURIComponent(characterId)}` : wsBase;
+            const params = new URLSearchParams();
+            if (characterId) params.set('character', characterId);
+            if (summonedByCharacterId) params.set('summoned_by', summonedByCharacterId);
+            const query = params.toString();
+            const wsUrl = query ? `${wsBase}?${query}` : wsBase;
             console.log(`Connecting to WebSocket: ${wsUrl}`);
             
             ws = new WebSocket(wsUrl);
@@ -2234,6 +2238,21 @@
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 console.log('Received:', data);
+
+                if (data.type === 'connected') {
+                    // Backend tells us upfront whether a greeting is actually
+                    // coming - if so, lock now rather than waiting for the
+                    // response to arrive (that has real generation latency,
+                    // and leaving things unlocked during that window let
+                    // someone spam another switch/touch mid-greeting, which
+                    // is exactly the kind of overlap that broke things
+                    // before). If no greeting is coming, nothing will ever
+                    // arrive to unlock this, so don't lock in that case.
+                    if (data.greeting_pending) {
+                        setInteractionsLocked(true);
+                    }
+                    return;
+                }
 
                 if (data.type === 'response') {
                     // Display response in console for now
@@ -2697,9 +2716,10 @@
                 if (pendingCharacterSwitch) {
                     const targetId = pendingCharacterSwitch;
                     pendingCharacterSwitch = null;
+                    const summonerId = currentCharacter?.id || null; // capture before it gets overwritten
                     const targetCharacter = CHARACTERS.find(c => c.id === targetId);
                     if (targetCharacter) {
-                        switchCharacter(targetCharacter);
+                        switchCharacter(targetCharacter, summonerId);
                         document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
                         const item = document.querySelector(`.character-item[data-character-id="${targetId}"]`);
                         if (item) item.classList.add('active');

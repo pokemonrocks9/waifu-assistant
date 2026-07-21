@@ -2678,15 +2678,6 @@
         function playAudioWithLipSync(audioBase64) {
             const audio = new Audio('data:audio/wav;base64,' + audioBase64);
             const thisPlaybackId = ++activePlaybackId;
-            
-            audio.onloadedmetadata = () => {
-                const durationMs = audio.duration * 1000;
-                
-                // Setup audio analysis for real-time lip sync
-                setupAudioAnalysis(audio);
-                
-                startLipSync(durationMs);
-            };
 
             const speakBtn = document.getElementById('speak-btn');
 
@@ -2694,6 +2685,15 @@
                 if (thisPlaybackId !== activePlaybackId) return; // superseded before it even started
                 speakBtn.classList.add('speaking');
                 speakBtn.textContent = '🔊';
+
+                // Only start lip sync once playback has ACTUALLY begun - doing
+                // this on 'loadedmetadata' instead (which fires before real
+                // audio is flowing) was reading silence/noise from the
+                // analyser, causing rapid erratic mouth flapping during the
+                // gap between "audio ready" and playback genuinely starting
+                const durationMs = audio.duration * 1000;
+                setupAudioAnalysis(audio);
+                startLipSync(durationMs);
             }).catch(err => {
                 console.warn('Audio playback blocked (likely browser autoplay restriction):', err);
                 if (thisPlaybackId !== activePlaybackId) return;

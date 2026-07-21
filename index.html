@@ -3000,6 +3000,21 @@
                     .then((reg) => console.log('Service worker registered:', reg.scope))
                     .catch((err) => console.error('Service worker registration failed:', err));
             });
+
+            // A new service worker doesn't control the page that triggered
+            // its install - even with skipWaiting()/clients.claim(), THIS
+            // page load is still served by whatever worker was active before
+            // the reload started, so sub-resource fetches (JS, model files)
+            // can come from the old cache until a second reload. Auto-reload
+            // once when control actually changes hands, so updates complete
+            // in one refresh instead of needing a manual second hard-refresh.
+            let hasReloaded = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (hasReloaded) return; // guard against reload loops
+                hasReloaded = true;
+                console.log('New service worker took control - reloading to complete the update');
+                window.location.reload();
+            });
         }
     </script>
 </body>

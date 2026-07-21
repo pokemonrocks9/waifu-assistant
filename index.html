@@ -1042,6 +1042,3158 @@
                         arm_R: { 1: 'happy', 2: 'happy' },
                         neck: { 1: 'embarrassed', 2: 'embarrassed' },
                         choker: { 1: 'embarrassed', 2: 'embarrassed' },
+                        leg_L: { 1: 'embarrassed', 2: 'embarrassed' },
+                        leg_R: { 1: 'embarrassed', 2: 'embarrassed' }
+                    }
+                }
+            },
+
+            {
+                id: 'nepgear',
+                name: 'Nepgear',
+                description: 'Hyperdimension Neptunia',
+                modelUrl: CUSTOM_MODELS_PATH + 'nepgear/0500_0501.model3.json',
+                // Both desktop and mobile positions confirmed via testing
+                scale: 0.30,
+                scaleMobile: 0.24,
+                position: { x: 0.00, y: 0.30 },
+                positionMobile: { x: 0, y: 0.23 },
+                isCustom: true,
+
+                // Confirmed via direct testing (2026) - both expression
+                // indices and touch zones. Her model has no named hit-areas
+                // (unlike Compa's rig), so zones are rectangular regions
+                // built from tap coordinates rather than real geometry -
+                // checked in priority order below so overlapping regions
+                // resolve to the more specific zone.
+                zoneConfig: {
+                    emotionToExpression: {
+                        neutral: 0,
+                        happy: 1,
+                        angry: 2,
+                        sad: 3,          // "concerned"
+                        sympathetic: 4,
+                        // 5 = "nervous (sweat)" - deliberately unmapped, doesn't
+                        // cleanly fit the 10-emotion vocabulary, available for
+                        // custom logic later if wanted
+                        sleeping: 6,
+                        crying: 7,
+                        surprised: 8,    // "starry eyed"
+                        shocked: 9,      // "O-O"
+                        embarrassed: 10  // ">-<"
+                        // 11 = explicitly flagged "never want to use" - skipped
+                    },
+                    petZones: ['head'],
+                    llmZones: ['chest', 'skirt'],
+                    petHoldThresholdMs: 2500,
+
+                    // Rectangular touch zones (relative 0-1 coordinates,
+                    // checked in this order - first match wins)
+                    rectZones: [
+                        { name: 'head', xMin: 0.28, xMax: 0.74, yMin: 0.00, yMax: 0.17 },
+                        { name: 'hand_R', xMin: 0.35, xMax: 0.52, yMin: 0.18, yMax: 0.30 }, // her right (screen-left)
+                        { name: 'hand_L', xMin: 0.66, xMax: 0.87, yMin: 0.42, yMax: 0.56 }, // her left (screen-right)
+                        { name: 'chest', xMin: 0.42, xMax: 0.65, yMin: 0.19, yMax: 0.36 },
+                        { name: 'legs', xMin: 0.26, xMax: 0.69, yMin: 0.48, yMax: 0.72 },
+                        { name: 'skirt', xMin: 0.23, xMax: 0.75, yMin: 0.37, yMax: 0.56 }
+                        // Nose/face poked out at x=0.48-0.51, y=0.15-0.16 - not
+                        // wired to a reaction yet, noted for later if wanted
+                    ],
+
+                    zoneLines: {
+                        hand_R: { 2: ["That tickles!", "Hehe, careful there!"] },
+                        hand_L: { 2: ["That tickles!", "Hehe, careful there!"] },
+                        legs: {
+                            1: [
+                                "Um, that's a little forward...",
+                                "H-hey, that's kind of close...",
+                                "Oh! Um, please be careful there.",
+                                "That's a bit much, um, please don't."
+                            ],
+                            2: [
+                                "Hey! That startled me!",
+                                "Whoa, please don't do that!",
+                                "H-hey! That really caught me off guard!",
+                                "Please, that's not okay!"
+                            ]
+                        }
+                    },
+                    zoneExpressions: {
+                        hand_R: { 1: 'happy', 2: 'happy' },
+                        hand_L: { 1: 'happy', 2: 'happy' },
+                        legs: { 1: 'embarrassed', 2: 'embarrassed' }
+                    }
+                }
+            },
+            
+            // Add more Neptunia characters here - copy the zoneConfig block above
+            // and adjust to match the new model's actual hit-area names/expression
+            // indices (confirm both via the debug panel before assuming they match):
+            /*
+            {
+                id: 'neptune',
+                name: 'Neptune',
+                description: 'Neptunia - Purple Heart',
+                modelUrl: CUSTOM_MODELS_PATH + 'neptune/neptune.model3.json',
+                scale: 0.1,
+                position: { x: 0, y: 0.1 },
+                isCustom: true
+            },
+            */
+        ];
+
+        // Global state
+        let app;
+        let currentModel = null;
+        let currentModelTickerFn = null; // reference to the active app.ticker.add callback, so we can remove it before adding a new one on reload/switch instead of leaking it forever
+        let pendingCharacterSwitch = null; // set when the backend flags a mid-conversation switch request
+        let pendingSwitchReason = null; // the user's original message, for the new character's handoff greeting to reference
+        let currentCharacter = null;
+        let ws = null;
+        let isConnected = false;
+
+        // Lip sync state
+        let lipSyncState = {
+            isSpeaking: false,
+            targetMouthOpen: 0,
+            currentMouthOpen: 0,
+            smoothingFactor: 0.3,
+            speakingStartTime: 0,
+            speakingDuration: 0,
+            debugLogged: false,
+            errorLogged: false,
+            audioAnalyzer: null,
+            audioDataArray: null
+        };
+
+        // Audio analysis for realistic lip sync
+        function setupAudioAnalysis(audio) {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaElementSource(audio);
+                const analyzer = audioContext.createAnalyser();
+                
+                analyzer.fftSize = 256;
+                const bufferLength = analyzer.frequencyBinCount;
+                const dataArray = new Uint8Array(bufferLength);
+                
+                source.connect(analyzer);
+                analyzer.connect(audioContext.destination);
+                
+                lipSyncState.audioAnalyzer = analyzer;
+                lipSyncState.audioDataArray = dataArray;
+                
+                console.log('🎤 Audio analysis setup complete');
+            } catch (error) {
+                console.error('Audio analysis setup failed:', error);
+            }
+        }
+
+        // Mouse tracking
+        let mouseX = 0;
+        let mouseY = 0;
+
+        // Initialize PIXI Application
+        function initPixi() {
+            const canvas = document.getElementById('live2d-canvas');
+            
+            // Check if Live2D runtimes are loaded
+            console.log('Checking Live2D runtimes...');
+            console.log('PIXI:', typeof PIXI !== 'undefined' ? '✅' : '❌');
+            console.log('PIXI.live2d:', typeof PIXI.live2d !== 'undefined' ? '✅' : '❌');
+            console.log('Live2DCubismCore:', typeof Live2DCubismCore !== 'undefined' ? '✅ (Cubism 4)' : '❌');
+            console.log('Live2D:', typeof Live2D !== 'undefined' ? '✅ (Cubism 2)' : '❌');
+            
+            app = new PIXI.Application({
+                view: canvas,
+                width: window.innerWidth,
+                height: window.innerHeight,
+                backgroundColor: 0x1a1a2e,
+                backgroundAlpha: 0,
+                antialias: true,
+                resolution: window.devicePixelRatio || 1,
+                autoDensity: true
+            });
+
+            // Handle window resize - but ignore height-only changes from mobile keyboard
+            // open/close (Android fires a real window resize for this; we only want to
+            // react to genuine resizes/rotations, identified by width changing)
+            let lastRendererWidth = window.innerWidth;
+            window.addEventListener('resize', () => {
+                if (window.innerWidth !== lastRendererWidth) {
+                    lastRendererWidth = window.innerWidth;
+                    
+                    // On mobile, height can change when the keyboard pops up.
+                    // Use the locked app height if we're currently in an input to prevent squashing.
+                    const appHeight = getComputedStyle(document.documentElement).getPropertyValue('--app-height');
+                    const h = (appHeight.includes('px') && document.activeElement.id === 'text-input') 
+                        ? parseFloat(appHeight) : window.innerHeight;
+
+                    app.renderer.resize(window.innerWidth, h);
+                    if (currentModel) {
+                        positionModel(currentModel, currentCharacter);
+                    }
+                }
+            });
+
+            // Mouse tracking for gaze
+            window.addEventListener('mousemove', (event) => {
+                mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+                mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+            });
+
+            // Touch tracking for mobile
+            window.addEventListener('touchmove', (event) => {
+                if (event.touches.length > 0) {
+                    const touch = event.touches[0];
+                    mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
+                    mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
+                }
+            });
+
+            console.log('PIXI initialized');
+        }
+
+        function setupRawParameterPanel() {
+            if (!currentModel) return;
+
+            const core = currentModel.internalModel.coreModel;
+            const params = core._model?.parameters;
+            if (!params || !params.ids) {
+                console.warn('Could not access parameter list for raw panel');
+                return;
+            }
+
+            const listEl = document.getElementById('raw-params-list');
+            listEl.innerHTML = '';
+
+            const ids = params.ids;
+            const mins = params.minimumValues || [];
+            const maxs = params.maximumValues || [];
+            const defaults = params.defaultValues || [];
+
+            ids.forEach((id, i) => {
+                const min = mins[i] !== undefined ? mins[i] : -1;
+                const max = maxs[i] !== undefined ? maxs[i] : 1;
+                const def = defaults[i] !== undefined ? defaults[i] : 0;
+
+                const row = document.createElement('div');
+                row.className = 'control-group';
+                row.innerHTML = `
+                    <label>${id}</label>
+                    <div class="control-row">
+                        <input type="range" min="${min}" max="${max}" step="0.01" value="${def}" data-param-id="${id}">
+                        <span class="param-value">${def.toFixed(2)}</span>
+                    </div>
+                `;
+                listEl.appendChild(row);
+
+                const slider = row.querySelector('input[type="range"]');
+                const valueLabel = row.querySelector('.param-value');
+
+                slider.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    valueLabel.textContent = val.toFixed(2);
+                    try {
+                        core.setParameterValueById(id, val);
+                    } catch (err) {
+                        console.error(`Failed to set ${id}:`, err);
+                    }
+                });
+            });
+
+            document.getElementById('raw-params-reset').addEventListener('click', () => {
+                listEl.querySelectorAll('input[type="range"]').forEach((slider, i) => {
+                    const def = defaults[i] !== undefined ? defaults[i] : 0;
+                    slider.value = def;
+                    slider.dispatchEvent(new Event('input'));
+                });
+            });
+        }
+
+        // Toggle raw parameter panel visibility, building it lazily on first open
+        let rawParamsPanelOpen = false; // when true, updateLipSync skips writing mouth params so manual slider testing isn't immediately overwritten
+
+        document.getElementById('toggle-raw-params').addEventListener('change', (e) => {
+            const panel = document.getElementById('raw-params-panel');
+            rawParamsPanelOpen = e.target.checked;
+            if (e.target.checked) {
+                panel.classList.remove('hidden');
+                if (document.getElementById('raw-params-list').children.length === 0) {
+                    setupRawParameterPanel();
+                }
+            } else {
+                panel.classList.add('hidden');
+            }
+        });
+
+        // Master toggle for all debug/testing controls - hidden by default
+        document.getElementById('toggle-debug-settings').addEventListener('change', (e) => {
+            const panel = document.getElementById('debug-settings-panel');
+            if (e.target.checked) {
+                panel.classList.remove('hidden');
+                setupVoiceTuning(); // pre-fill with current character's actual values on open
+            } else {
+                panel.classList.add('hidden');
+            }
+        });
+
+        async function setupVoiceTuning() {
+            const pitchSlider = document.getElementById('voice-tune-pitch');
+            const pitchValue = document.getElementById('voice-tune-pitch-value');
+            const voiceSelect = document.getElementById('voice-tune-select');
+            const applyBtn = document.getElementById('voice-tune-apply');
+            const statusEl = document.getElementById('voice-tune-status');
+
+            // Pre-fill with whatever the backend is ACTUALLY currently using
+            // for this character, not a guess - so the slider starts honest
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/character/active`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.rvc_pitch !== undefined) pitchSlider.value = data.rvc_pitch;
+                    if (data.edge_voice) {
+                        const matchingOption = [...voiceSelect.options].find(o => o.value === data.edge_voice);
+                        if (matchingOption) voiceSelect.value = data.edge_voice;
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not fetch current voice config to pre-fill tuning UI:', err);
+            }
+            pitchValue.textContent = pitchSlider.value;
+
+            pitchSlider.oninput = () => {
+                pitchValue.textContent = pitchSlider.value;
+            };
+
+            applyBtn.onclick = async () => {
+                if (!currentCharacter) return;
+                applyBtn.disabled = true;
+                applyBtn.textContent = 'Reloading voice...';
+                statusEl.textContent = '';
+
+                try {
+                    const response = await fetch(`${BACKEND_URL}/api/character/voice-tune`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            character_id: currentCharacter.id,
+                            voice: voiceSelect.value,
+                            pitch: parseInt(pitchSlider.value, 10)
+                        })
+                    });
+                    const result = await response.json();
+
+                    if (result.error) {
+                        statusEl.textContent = `Failed: ${result.error}`;
+                        statusEl.style.color = 'var(--danger)';
+                    } else {
+                        statusEl.textContent = `Applied - voice: ${result.voice}, pitch: ${result.pitch}. Say something to hear it.`;
+                        statusEl.style.color = 'var(--cyan)';
+                    }
+                } catch (err) {
+                    statusEl.textContent = `Request failed: ${err.message}`;
+                    statusEl.style.color = 'var(--danger)';
+                } finally {
+                    applyBtn.disabled = false;
+                    applyBtn.textContent = 'Apply to current character';
+                }
+            };
+        }
+
+        function getExpressionLabelKey(characterId, index) {
+            return `expr_label_${characterId}_${index}`;
+        }
+
+        // Rebuilds the expression testing panel from scratch based on
+        // whatever the CURRENTLY LOADED model actually has - different
+        // characters' rigs have different expression counts, so this can't
+        // be a fixed list. Labels are editable inline and persist per
+        // character+index in localStorage, so once you figure out what an
+        // expression actually is, it stays labeled for next time.
+        function renderExpressionTestButtons() {
+            const container = document.getElementById('expression-buttons');
+            container.innerHTML = '';
+
+            if (!currentModel || !currentCharacter) {
+                container.innerHTML = '<p class="form-hint" style="opacity: 0.6;">Load a character to see their expressions here.</p>';
+                return;
+            }
+
+            const definitions = currentModel.internalModel?.motionManager?.expressionManager?.definitions;
+            const count = definitions ? definitions.length : 0;
+
+            if (count === 0) {
+                container.innerHTML = '<p class="form-hint" style="opacity: 0.6;">This model has no expressions defined.</p>';
+                return;
+            }
+
+            const characterId = currentCharacter.id;
+
+            for (let i = 0; i < count; i++) {
+                const savedLabel = localStorage.getItem(getExpressionLabelKey(characterId, i)) || '';
+
+                const row = document.createElement('div');
+                row.className = 'flex-row gap-2';
+                row.style.marginBottom = '6px';
+
+                const testBtn = document.createElement('button');
+                testBtn.className = 'btn secondary';
+                testBtn.textContent = `Test ${i}`;
+                testBtn.style.flexShrink = '0';
+                testBtn.addEventListener('click', () => {
+                    try {
+                        currentModel.expression(i);
+                        console.log(`Expression set: index ${i}${savedLabel ? ` (${savedLabel})` : ''}`);
+                    } catch (err) {
+                        console.error(`Failed to set expression index ${i}:`, err);
+                    }
+                });
+
+                const labelInput = document.createElement('input');
+                labelInput.type = 'text';
+                labelInput.placeholder = `What is expression ${i}?`;
+                labelInput.value = savedLabel;
+                labelInput.style.cssText = 'flex: 1; background: var(--panel); border: 1px solid var(--hairline); border-radius: 6px; padding: 6px 10px; color: var(--text); font-family: var(--font-display); font-size: 12px;';
+                labelInput.addEventListener('input', () => {
+                    localStorage.setItem(getExpressionLabelKey(characterId, i), labelInput.value.trim());
+                });
+
+                row.appendChild(testBtn);
+                row.appendChild(labelInput);
+                container.appendChild(row);
+            }
+
+            const resetRow = document.createElement('button');
+            resetRow.className = 'btn ghost';
+            resetRow.textContent = 'Reset to default';
+            resetRow.style.width = '100%';
+            resetRow.style.marginTop = '4px';
+            resetRow.addEventListener('click', () => {
+                try {
+                    currentModel.expression();
+                } catch (err) {
+                    console.error('Failed to reset expression:', err);
+                }
+            });
+            container.appendChild(resetRow);
+
+            const copyConfigBtn = document.createElement('button');
+            copyConfigBtn.className = 'btn secondary';
+            copyConfigBtn.textContent = 'Copy as config (for pasting into CHARACTERS)';
+            copyConfigBtn.style.width = '100%';
+            copyConfigBtn.style.marginTop = '4px';
+            copyConfigBtn.addEventListener('click', () => {
+                const lines = [];
+                const inputs = container.querySelectorAll('input[type="text"]');
+                inputs.forEach((input, i) => {
+                    // Read live from the DOM first (guaranteed current, even
+                    // if the 'input' listener somehow hasn't saved it yet),
+                    // falling back to localStorage as a backup
+                    const label = input.value.trim() || localStorage.getItem(getExpressionLabelKey(characterId, i)) || '';
+                    if (label) {
+                        localStorage.setItem(getExpressionLabelKey(characterId, i), label); // ensure it's saved too
+                        const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '');
+                        if (key) {
+                            lines.push(`    ${key}: ${i}, // "${label}"`);
+                        }
+                    }
+                });
+                const snippet = lines.length
+                    ? `emotionToExpression: {\n${lines.join('\n')}\n}`
+                    : '// No labels entered yet - type names in the fields above first';
+
+                navigator.clipboard.writeText(snippet).then(() => {
+                    copyConfigBtn.textContent = 'Copied!';
+                    setTimeout(() => { copyConfigBtn.textContent = 'Copy as config (for pasting into CHARACTERS)'; }, 1500);
+                }).catch(() => {
+                    console.log('Config snippet (clipboard write failed, here it is):\n' + snippet);
+                });
+            });
+            container.appendChild(copyConfigBtn);
+        }
+
+        // Kept as a thin wrapper so existing call sites (loadLive2DModel,
+        // switchCharacter) don't need to change - it just triggers a rebuild
+        function setupExpressionButtons() {
+            renderExpressionTestButtons();
+        }
+
+        // Load Live2D model
+        async function loadLive2DModel(character) {
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            const statusDiv = document.getElementById('model-status');
+
+            loadingDiv.style.display = 'block';
+            errorDiv.style.display = 'none';
+
+            try {
+                console.log(`Loading Live2D model: ${character.name}`);
+                console.log(`Model URL: ${character.modelUrl}`);
+                
+                // Remove previous model if exists
+                if (currentModel) {
+                    // Remove its ticker callback FIRST, before destroy() - otherwise
+                    // that closure keeps running every frame against a destroyed
+                    // model forever (this was the actual cause of accumulating
+                    // "setParameterValueById not available" warnings and visible
+                    // mouth jitter on characters reloaded/switched to repeatedly
+                    // in a session).
+                    if (currentModelTickerFn) {
+                        app.ticker.remove(currentModelTickerFn);
+                        currentModelTickerFn = null;
+                    }
+                    app.stage.removeChild(currentModel);
+                    currentModel.destroy();
+                }
+
+                // For custom models, validate the JSON is parseable first (useful for catching BOM/encoding issues),
+                // then load directly. (Blob-URL loading was removed - it can't resolve the relative paths
+                // that multi-file Live2D models depend on for their .moc3/textures/expressions, so it always
+                // failed here anyway and just added noise + a wasted round-trip.)
+                if (character.isCustom) {
+                    try {
+                        console.log('Validating model JSON...');
+                        const response = await fetch(character.modelUrl);
+                        const text = await response.text();
+                        const cleanText = text.replace(/^\uFEFF/, '');
+                        JSON.parse(cleanText); // throws if malformed
+                        console.log('Model JSON valid, proceeding with direct load.');
+                    } catch (validationError) {
+                        console.error('Model JSON validation failed:', validationError);
+                    }
+                }
+
+                // Standard loading (for CDN models or custom models alike)
+                const model = await PIXI.live2d.Live2DModel.from(character.modelUrl, {
+                    autoInteract: false
+                });
+
+                // pixi-live2d-display auto-updates models on PIXI.Ticker.shared by
+                // default - a SEPARATE ticker/RAF loop from our own app.ticker, with
+                // no guaranteed ordering against it. That race is what caused a
+                // single-frame mouth pop during pauses: whichever loop happened to
+                // run last that frame is what actually rendered, so occasionally the
+                // model's own internal update (idle motion/physics/expression
+                // blending, whatever its own rest values are) would flash through
+                // right as our target settled near zero. Disabling autoUpdate and
+                // driving model.update() ourselves, in our own ticker, guarantees our
+                // lip sync override always applies AFTER the model's own update each
+                // frame - so it's always what actually renders.
+                model.autoUpdate = false;
+
+                currentModel = model;
+                currentCharacter = character;
+                applyCharacterZoneConfig(character);
+                const textInputEl = document.getElementById('text-input');
+                if (textInputEl && !textInputEl.disabled) {
+                    textInputEl.placeholder = `Say something to ${character.name}…`;
+                }
+
+                // Position and scale the model
+                positionModel(model, character);
+
+                // Add to stage
+                app.stage.addChild(model);
+
+                // Setup model parameters
+                setupModelBehaviors(model);
+
+                // Update status
+                statusDiv.textContent = `Model: ${character.name}`;
+                loadingDiv.style.display = 'none';
+
+                console.log('Live2D model loaded successfully!');
+                console.log('Available motions:', model.internalModel.motionManager.definitions);
+                console.log('Available expressions:', Object.keys(model.internalModel.motionManager.expressionManager?.definitions || {}));
+
+                // Rebuild the expression test panel and re-wire touch
+                // interactions for THIS model instance - needs to happen on
+                // every load (not just the first), since switching
+                // characters creates a new model instance each time and the
+                // old listeners/panel would otherwise go stale
+                setupExpressionButtons();
+                setupTouchInteractions();
+
+                // Same staleness issue applied to the raw parameter panel -
+                // it only builds when the toggle opens, so just clear its
+                // content here; it'll rebuild fresh for the new model next
+                // time someone actually opens it, instead of showing the
+                // previous character's parameter sliders
+                const rawParamsList = document.getElementById('raw-params-list');
+                if (rawParamsList) rawParamsList.innerHTML = '';
+
+            } catch (error) {
+                console.error('Error loading Live2D model:', error);
+                loadingDiv.style.display = 'none';
+                errorDiv.style.display = 'block';
+                errorDiv.innerHTML = `
+                    <div>Failed to load model: ${character.name}</div>
+                    <div style="font-size: 12px; margin-top: 10px; color: #ffaa00;">
+                        ${error.message}
+                    </div>
+                    <div style="font-size: 11px; margin-top: 5px; color: #888;">
+                        Check console for details
+                    </div>
+                `;
+            }
+        }
+
+        function positionModel(model, character) {
+            // Use the dimensions of the PIXI application screen rather than the 
+            // window's viewport, which can change when the mobile keyboard opens.
+            const screenWidth = app.screen.width;
+            const screenHeight = app.screen.height;
+            
+            model.anchor.set(0.5, 0.5);
+            
+            // Determine if mobile (phones) or desktop
+            const isMobile = screenWidth < 768;
+            
+            // Use mobile-specific scale and position if available and on mobile
+            const scale = (isMobile && character.scaleMobile !== undefined) ? character.scaleMobile : character.scale;
+            const position = (isMobile && character.positionMobile) ? character.positionMobile : character.position;
+            
+            console.log(`Canvas: ${screenWidth}x${screenHeight}, Device: ${isMobile ? 'Mobile' : 'Desktop'}, Scale: ${scale.toFixed(3)}, Position: x=${position.x.toFixed(2)}, y=${position.y.toFixed(2)}`);
+            
+            // Position on screen
+            model.position.set(
+                screenWidth * (0.5 + position.x),
+                screenHeight * (0.5 + position.y)
+            );
+            
+            // Apply uniform scale (no stretching)
+            model.scale.set(scale);
+        }
+
+        function setupModelBehaviors(model) {
+            // Enable automatic behaviors
+            model.on('hit', (hitAreas) => {
+                console.log('Hit areas:', hitAreas);
+                // You could trigger reactions here
+            });
+
+            // Animation loop for custom behaviors
+            currentModelTickerFn = () => {
+                if (!model) return;
+
+                // Drive the model's own update first (idle motions, physics,
+                // expression blending) now that autoUpdate is disabled - our
+                // overrides below always run after, so they're guaranteed to be
+                // what actually renders this frame instead of racing it.
+                if (typeof model.update === 'function') {
+                    model.update(app.ticker.deltaMS);
+                }
+
+                // Update eye tracking (gaze follows cursor)
+                updateEyeTracking(model);
+
+                // Update lip sync
+                updateLipSync(model);
+
+                // Update breathing (Live2D models have this built-in, but we can enhance)
+                updateBreathing(model);
+            };
+            app.ticker.add(currentModelTickerFn);
+        }
+
+        function updateEyeTracking(model) {
+            try {
+                const coreModel = model.internalModel.coreModel;
+                const parameters = coreModel.parameters;
+                
+                // Common Live2D eye parameters
+                const eyeParams = [
+                    'ParamAngleX',
+                    'ParamAngleY',
+                    'ParamEyeBallX',
+                    'ParamEyeBallY'
+                ];
+
+                // Smooth eye movement
+                const eyeX = mouseX * 30; // Scale to appropriate range
+                const eyeY = mouseY * 30;
+
+                for (let i = 0; i < parameters.count; i++) {
+                    const paramId = parameters.ids[i];
+                    
+                    if (eyeParams.includes(paramId)) {
+                        const current = parameters.values[i];
+                        let target = 0;
+                        
+                        if (paramId.includes('X')) target = eyeX;
+                        if (paramId.includes('Y')) target = eyeY;
+                        
+                        // Smooth interpolation
+                        const smoothed = current + (target - current) * 0.1;
+                        parameters.values[i] = smoothed;
+                    }
+                }
+            } catch (error) {
+                // Parameters might not exist, that's okay
+            }
+        }
+
+        function updateLipSync(model) {
+            if (!model || !model.internalModel) return;
+            
+            try {
+                const internalModel = model.internalModel;
+                
+                // Animate mouth based on audio analysis or fallback to simple animation
+                if (lipSyncState.isSpeaking) {
+                    const elapsed = Date.now() - lipSyncState.speakingStartTime;
+                    const progress = Math.min(elapsed / lipSyncState.speakingDuration, 1);
+                    
+                    if (lipSyncState.audioAnalyzer && lipSyncState.audioDataArray) {
+                        // Real-time audio analysis
+                        lipSyncState.audioAnalyzer.getByteFrequencyData(lipSyncState.audioDataArray);
+                        
+                        // Calculate average volume (focusing on speech frequencies 85Hz-255Hz)
+                        let sum = 0;
+                        const startBin = 3;  // ~85Hz
+                        const endBin = 30;   // ~3kHz (speech range)
+                        for (let i = startBin; i < endBin; i++) {
+                            sum += lipSyncState.audioDataArray[i];
+                        }
+                        const average = sum / (endBin - startBin);
+
+                        // Normalize to 0-1 range
+                        let rawVolume = average / 255.0;
+
+                        // Apply curve for more natural movement
+                        let volume = Math.pow(rawVolume, 0.5); // Square root for softer curve
+
+                        // Slight randomness for natural feel, scaled by volume
+                        volume += (Math.random() - 0.5) * 0.1 * volume;
+                        volume = Math.max(0, Math.min(1, volume));
+                        
+                        // Fade out near the end
+                        const fadeOutStart = 0.85;
+                        if (progress > fadeOutStart) {
+                            const fadeProgress = (progress - fadeOutStart) / (1 - fadeOutStart);
+                            volume *= (1 - fadeProgress);
+                        }
+                        
+                        lipSyncState.targetMouthOpen = volume;
+                    } else {
+                        // Fallback: Simple oscillation pattern
+                        const baseOscillation = Math.sin(elapsed * 0.025) * 0.5 + 0.5;
+                        const microOscillation = Math.sin(elapsed * 0.08) * 0.3;
+                        const combinedOscillation = (baseOscillation + microOscillation) / 1.3;
+                        
+                        const intensityCurve = Math.sin(progress * Math.PI);
+                        lipSyncState.targetMouthOpen = combinedOscillation * intensityCurve * 1.0;
+                    }
+                    
+                    if (progress >= 1) {
+                        lipSyncState.isSpeaking = false;
+                        lipSyncState.targetMouthOpen = 0;
+                        lipSyncState.audioAnalyzer = null;
+                        lipSyncState.audioDataArray = null;
+                        // Reset expression to neutral the instant speaking actually
+                        // ends, rather than leaving the mid-speech expression (e.g.
+                        // "happy") holding other mouth-adjacent parameters while
+                        // ParamMouthOpenY independently collapses to 0 - that mismatch
+                        // is what produced a jarring sideways mouth shape right as she
+                        // finished talking. (audio.onended still separately handles
+                        // the mic-restart/switch-handoff timing on its own delay.)
+                        if (!lipSyncState._neutralResetDone) {
+                            lipSyncState._neutralResetDone = true;
+                            triggerEmotion('neutral');
+                        }
+                    }
+                }
+
+                // Smooth mouth movement with faster response
+                const smoothing = lipSyncState.audioAnalyzer ? 0.6 : 0.3; // Faster when using audio
+                lipSyncState.currentMouthOpen += (lipSyncState.targetMouthOpen - lipSyncState.currentMouthOpen) * smoothing;
+
+                // Use setParameterValueById to set absolute value
+                // (skipped while the raw parameter debug panel is open, so manual
+                // slider testing there isn't immediately overwritten every frame -
+                // that overwrite was why the ParamMouthOpenY slider looked "broken")
+                if (rawParamsPanelOpen) {
+                    // do nothing - let manual panel input stand
+                } else if (internalModel.coreModel && typeof internalModel.coreModel.setParameterValueById === 'function') {
+                    internalModel.coreModel.setParameterValueById('ParamMouthOpenY', lipSyncState.currentMouthOpen);
+
+                    // Nepgear's idle motions (all 10 of them, across her in/loop/out
+                    // states) continuously animate PARAM_CHEEK the entire time,
+                    // speech or not - Compa's single simple idle motion doesn't touch
+                    // anything cheek/mouth-adjacent at all. During loud speech
+                    // ParamMouthOpenY visually dominates so this idle cheek movement
+                    // isn't noticeable, but the instant the mouth closes at a pause,
+                    // whatever the idle loop happens to be doing to the cheek that
+                    // moment becomes visible - looking like a ghosted sideways mouth
+                    // pop with no relation to actual speech content. Hold it at
+                    // neutral ourselves while she's actively speaking so the idle
+                    // loop can't fight for visual dominance mid-utterance.
+                    if (lipSyncState.isSpeaking) {
+                        try {
+                            internalModel.coreModel.setParameterValueById('PARAM_CHEEK', 0);
+                        } catch (e) {
+                            // Param may not exist on other characters' rigs - fine to no-op
+                        }
+                    }
+                    
+                    if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
+                        console.log('💬 Lip sync active via setParameterValueById:', lipSyncState.currentMouthOpen.toFixed(3));
+                        console.log('Audio analysis:', lipSyncState.audioAnalyzer ? 'ENABLED ✅' : 'DISABLED (fallback)');
+                        lipSyncState.debugLogged = true;
+                    }
+                } else {
+                    console.warn('setParameterValueById not available');
+                }
+                
+                if (!lipSyncState.isSpeaking) {
+                    lipSyncState.debugLogged = false;
+                }
+                
+            } catch (error) {
+                if (lipSyncState.isSpeaking && !lipSyncState.errorLogged) {
+                    console.error('Lip sync error:', error);
+                    lipSyncState.errorLogged = true;
+                }
+                if (!lipSyncState.isSpeaking) {
+                    lipSyncState.errorLogged = false;
+                }
+            }
+        }
+
+        function updateBreathing(model) {
+            try {
+                const coreModel = model.internalModel.coreModel;
+                const parameters = coreModel.parameters;
+                const time = Date.now() * 0.001;
+                
+                // Gentle breathing motion (Live2D usually has this built-in, but we can enhance)
+                const breathValue = Math.sin(time * 2) * 0.5 + 0.5; // 0 to 1
+                
+                const breathParams = ['ParamBreath', 'PARAM_BREATH'];
+                for (let i = 0; i < parameters.count; i++) {
+                    const paramId = parameters.ids[i];
+                    if (breathParams.includes(paramId)) {
+                        parameters.values[i] = breathValue;
+                    }
+                }
+            } catch (error) {
+                // Parameters might not exist
+            }
+        }
+
+        function startLipSync(durationMs) {
+            lipSyncState.isSpeaking = true;
+            lipSyncState.speakingStartTime = Date.now();
+            lipSyncState.speakingDuration = durationMs;
+            lipSyncState._neutralResetDone = false;
+            console.log(`🗣️ Started lip sync for ${durationMs}ms (${(durationMs/1000).toFixed(2)}s)`);
+        }
+
+        // Test lip sync button
+        function initTestLipSync() {
+            const testBtn = document.getElementById('test-lipsync');
+            if (testBtn) {
+                testBtn.addEventListener('click', () => {
+                    console.log('=== Testing Lip Sync ===');
+                    
+                    if (!currentModel) {
+                        console.error('No model loaded!');
+                        return;
+                    }
+                    
+                    // Log all available parameters
+                    try {
+                        if (!currentModel.internalModel || !currentModel.internalModel.coreModel) {
+                            console.error('Model not fully initialized yet');
+                            return;
+                        }
+                        
+                        const coreModel = currentModel.internalModel.coreModel;
+                        
+                        // Debug the structure
+                        console.log('CoreModel type:', coreModel.constructor.name);
+                        console.log('CoreModel keys:', Object.keys(coreModel));
+                        
+                        // Try different possible locations
+                        if (coreModel.parameters) {
+                            console.log('Found: coreModel.parameters');
+                            const parameters = coreModel.parameters;
+                            console.log(`Total parameters: ${parameters.count}`);
+                        } else if (coreModel._parameters) {
+                            console.log('Found: coreModel._parameters');
+                            const parameters = coreModel._parameters;
+                            console.log(`Total parameters: ${parameters.count}`);
+                        } else if (coreModel.getParameterCount) {
+                            console.log('Found: coreModel.getParameterCount() method');
+                            const count = coreModel.getParameterCount();
+                            console.log(`Total parameters: ${count}`);
+                            
+                            // List parameters using getter methods
+                            const allParams = [];
+                            const mouthParams = [];
+                            
+                            for (let i = 0; i < count; i++) {
+                                const paramId = coreModel.getParameterId(i);
+                                allParams.push(paramId);
+                                
+                                if (paramId.toLowerCase().includes('mouth') || 
+                                    paramId.toLowerCase().includes('lip')) {
+                                    mouthParams.push(paramId);
+                                    console.log(`  🗣️  ${paramId}`);
+                                }
+                            }
+                            
+                            console.log('Mouth-related parameters:', mouthParams.length > 0 ? mouthParams.join(', ') : 'NONE FOUND!');
+                            console.log('All parameters:', allParams.join(', '));
+                        } else {
+                            console.error('Cannot find parameter access method');
+                            console.log('Available methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(coreModel)));
+                        }
+                        
+                    } catch (e) {
+                        console.error('Error reading parameters:', e);
+                        console.error('Stack:', e.stack);
+                    }
+                    
+                    // Trigger 3 second lip sync test
+                    console.log('Starting 3 second lip sync test...');
+                    startLipSync(3000);
+                });
+            }
+        }
+
+        // Character selection UI
+        function initCharacterSelector() {
+            const characterList = document.getElementById('character-list');
+            const characterMenu = document.getElementById('character-menu');
+            const toggleBtn = document.getElementById('character-toggle');
+            
+            // Settings toggles
+            const toggleEditControls = document.getElementById('toggle-edit-controls');
+            const togglePositionDisplay = document.getElementById('toggle-position-display');
+            const editControls = document.getElementById('edit-controls');
+            const positionDisplay = document.getElementById('position-display');
+            
+            // Live editing controls
+            const scaleSlider = document.getElementById('scale-slider');
+            const xSlider = document.getElementById('x-slider');
+            const ySlider = document.getElementById('y-slider');
+            const scaleValue = document.getElementById('scale-value');
+            const xValue = document.getElementById('x-value');
+            const yValue = document.getElementById('y-value');
+            const resetBtn = document.getElementById('reset-btn');
+            const copyBtn = document.getElementById('copy-btn');
+
+            // Load settings from localStorage
+            const showEditControls = localStorage.getItem('showEditControls') !== 'false'; // default true
+            const alwaysShowPosition = localStorage.getItem('alwaysShowPosition') === 'true'; // default false
+            
+            toggleEditControls.checked = showEditControls;
+            togglePositionDisplay.checked = alwaysShowPosition;
+            
+            if (!showEditControls) {
+                editControls.classList.add('hidden');
+            }
+            
+            if (alwaysShowPosition) {
+                positionDisplay.classList.add('always-visible');
+            }
+
+            // Handle edit controls toggle
+            toggleEditControls.addEventListener('change', () => {
+                const isChecked = toggleEditControls.checked;
+                localStorage.setItem('showEditControls', isChecked);
+                
+                if (isChecked) {
+                    editControls.classList.remove('hidden');
+                } else {
+                    editControls.classList.add('hidden');
+                }
+            });
+
+            // Handle position display toggle
+            togglePositionDisplay.addEventListener('change', () => {
+                const isChecked = togglePositionDisplay.checked;
+                localStorage.setItem('alwaysShowPosition', isChecked);
+                
+                if (isChecked) {
+                    positionDisplay.classList.add('always-visible');
+                    updateModel(); // Update to show current values
+                } else {
+                    positionDisplay.classList.remove('always-visible');
+                }
+            });
+
+            // Update display values and model in real-time
+            function updateModel() {
+                if (!currentModel || !currentCharacter) return;
+                
+                const scale = parseFloat(scaleSlider.value);
+                const x = parseFloat(xSlider.value);
+                const y = parseFloat(ySlider.value);
+                
+                // Update displayed values
+                scaleValue.textContent = scale.toFixed(2);
+                xValue.textContent = x.toFixed(2);
+                yValue.textContent = y.toFixed(2);
+                
+                // Check if we're on mobile
+                const isMobile = window.innerWidth < 768;
+                
+                // Update character config temporarily
+                if (isMobile && currentCharacter.scaleMobile !== undefined) {
+                    // Update mobile-specific values
+                    currentCharacter.scaleMobile = scale;
+                    if (currentCharacter.positionMobile) {
+                        currentCharacter.positionMobile.x = x;
+                        currentCharacter.positionMobile.y = y;
+                    } else {
+                        currentCharacter.positionMobile = { x, y };
+                    }
+                } else {
+                    // Update desktop values
+                    currentCharacter.scale = scale;
+                    currentCharacter.position.x = x;
+                    currentCharacter.position.y = y;
+                }
+                
+                // Reposition model
+                positionModel(currentModel, currentCharacter);
+                
+                // Show position display
+                positionDisplay.textContent = `scale: ${scale.toFixed(2)}  |  x: ${x.toFixed(2)}  |  y: ${y.toFixed(2)}`;
+                
+                // Only show temporarily if not set to always visible
+                if (!togglePositionDisplay.checked) {
+                    positionDisplay.style.display = 'block';
+                }
+            }
+            
+            // Attach listeners
+            scaleSlider.addEventListener('input', updateModel);
+            xSlider.addEventListener('input', updateModel);
+            ySlider.addEventListener('input', updateModel);
+            
+            // Reset to original character values
+            resetBtn.addEventListener('click', () => {
+                if (!currentCharacter) return;
+                
+                // Find original character config
+                const originalChar = CHARACTERS.find(c => c.id === currentCharacter.id);
+                if (originalChar) {
+                    const isMobile = window.innerWidth < 768;
+                    
+                    // Reset to mobile or desktop values appropriately
+                    const scale = (isMobile && originalChar.scaleMobile !== undefined) ? originalChar.scaleMobile : originalChar.scale;
+                    const position = (isMobile && originalChar.positionMobile) ? originalChar.positionMobile : originalChar.position;
+                    
+                    scaleSlider.value = scale;
+                    xSlider.value = position.x;
+                    ySlider.value = position.y;
+                    updateModel();
+                }
+            });
+            
+            // Copy config to clipboard
+            copyBtn.addEventListener('click', () => {
+                if (!currentCharacter) return;
+                
+                const config = `{
+    id: '${currentCharacter.id}',
+    name: '${currentCharacter.name}',
+    description: '${currentCharacter.description}',
+    modelUrl: CUSTOM_MODELS_PATH + '${currentCharacter.modelUrl.replace(CUSTOM_MODELS_PATH, '')}',
+    scale: ${parseFloat(scaleSlider.value).toFixed(2)},
+    position: { x: ${parseFloat(xSlider.value).toFixed(2)}, y: ${parseFloat(ySlider.value).toFixed(2)} },
+    isCustom: ${currentCharacter.isCustom}
+}`;
+                
+                navigator.clipboard.writeText(config).then(() => {
+                    copyBtn.textContent = '✓ Copied!';
+                    setTimeout(() => {
+                        copyBtn.textContent = 'Copy Config';
+                    }, 2000);
+                }).catch(err => {
+                    console.error('Failed to copy:', err);
+                    alert('Copy failed. See console for config.');
+                    console.log(config);
+                });
+            });
+            
+            // Update sliders when character changes
+            function updateSliders(character) {
+                const isMobile = window.innerWidth < 768;
+                
+                // Use mobile values if available and on mobile, otherwise use desktop values
+                const scale = (isMobile && character.scaleMobile !== undefined) ? character.scaleMobile : character.scale;
+                const position = (isMobile && character.positionMobile) ? character.positionMobile : character.position;
+                
+                scaleSlider.value = scale;
+                xSlider.value = position.x;
+                ySlider.value = position.y;
+                
+                updateModel();
+            }
+
+            // Populate character list
+            CHARACTERS.forEach((char, index) => {
+                const item = document.createElement('div');
+                item.className = 'character-item';
+                item.dataset.characterId = char.id;
+                if (index === 0) item.classList.add('active');
+                
+                item.innerHTML = `
+                    <div class="character-name">${char.name}</div>
+                    <div class="character-desc">${char.description}</div>
+                `;
+                
+                item.addEventListener('click', () => {
+                    // Update active state
+                    document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
+                    item.classList.add('active');
+
+                    // Close menu first (mobile: slides down: desktop: slides
+                    // right) and let that animation actually play before the
+                    // loading overlay takes over the screen
+                    characterMenu.classList.remove('open');
+
+                    // Also hide the transient position readout if it was left
+                    // showing from a slider drag earlier - this handler closes
+                    // the menu a different way than the outside-click listeners,
+                    // so it needs the same cleanup they do or it gets stuck
+                    // showing stale values until the debug toggle is cycled
+                    const positionDisplay = document.getElementById('position-display');
+                    const togglePositionDisplay = document.getElementById('toggle-position-display');
+                    if (positionDisplay && togglePositionDisplay && !togglePositionDisplay.checked) {
+                        positionDisplay.style.display = 'none';
+                    }
+
+                    setTimeout(() => {
+                        switchCharacter(char).then(() => {
+                            updateSliders(char);
+                        });
+                    }, 300);
+                });
+                
+                characterList.appendChild(item);
+            });
+            
+            // Initialize sliders with first character
+            if (CHARACTERS.length > 0) {
+                updateSliders(CHARACTERS[0]);
+            }
+
+            // Desktop: Toggle menu with button
+            toggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); // Prevent this from triggering the close handler
+                characterMenu.classList.toggle('open');
+            });
+
+            // Mobile: Toggle menu with button next to chat input
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+            if (mobileMenuBtn) {
+                mobileMenuBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    characterMenu.classList.toggle('open');
+                });
+            }
+
+            // Prevent menu clicks from closing the menu
+            characterMenu.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+
+            // Mobile: Swipe from right edge to open menu
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let isSwiping = false;
+
+            document.addEventListener('touchstart', (e) => {
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                
+                // Detect if touch started from right edge (last 50px)
+                if (touchStartX > window.innerWidth - 50) {
+                    isSwiping = true;
+                }
+            });
+
+            document.addEventListener('touchmove', (e) => {
+                if (!isSwiping) return;
+                
+                const touchX = e.touches[0].clientX;
+                const deltaX = touchStartX - touchX;
+                
+                // Swiping left (deltaX positive) opens the menu
+                if (deltaX > 50) {
+                    characterMenu.classList.add('open');
+                    isSwiping = false;
+                }
+            });
+
+            document.addEventListener('touchend', () => {
+                isSwiping = false;
+            });
+
+            // Close menu when clicking outside (desktop)
+            document.addEventListener('click', (e) => {
+                if (characterMenu.classList.contains('open')) {
+                    characterMenu.classList.remove('open');
+                    // Only hide position display if not set to always visible
+                    if (!togglePositionDisplay.checked) {
+                        positionDisplay.style.display = 'none';
+                    }
+                }
+            });
+
+            // Close menu when tapping outside on mobile
+            document.addEventListener('touchstart', (e) => {
+                if (!characterMenu.contains(e.target) && characterMenu.classList.contains('open')) {
+                    e.stopPropagation();
+                    characterMenu.classList.remove('open');
+                    // Only hide position display if not set to always visible
+                    if (!togglePositionDisplay.checked) {
+                        positionDisplay.style.display = 'none';
+                    }
+                }
+            });
+        }
+
+        // WebSocket connection
+        // Orchestrates switching to a different character: shows a loading
+        // overlay for the duration (this is a real burn-in - RVC model reload +
+        // Ollama warmup on the backend - not an instant switch), then reconnects
+        // the websocket scoped to the new character and loads their Live2D model.
+        async function switchCharacter(character, summonedByCharacterId = null, handoffReason = null) {
+            const overlay = document.getElementById('character-switch-loading');
+            const overlayText = document.getElementById('character-switch-loading-text');
+
+            overlay.classList.remove('hidden');
+            overlayText.textContent = `Loading ${character.name}...`;
+
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/character/switch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ character_id: character.id })
+                });
+                const result = await response.json();
+
+                if (result.error) {
+                    console.error('Character load failed:', result.error);
+                    overlayText.textContent = `Failed to load: ${result.error}`;
+                    setTimeout(() => overlay.classList.add('hidden'), 3000);
+                    return;
+                }
+
+                console.log(`Character switch result:`, result);
+
+                // Reconnect the websocket scoped to the new character, so
+                // memory/personality are correctly isolated from here on
+                if (ws) {
+                    ws.onclose = null; // don't trigger the normal auto-reconnect logic for this deliberate switch
+                    ws.close();
+                }
+                connectWebSocket(character.id, summonedByCharacterId, handoffReason);
+
+                // Load the new Live2D model (this also applies its zoneConfig
+                // via applyCharacterZoneConfig, called inside loadLive2DModel)
+                await loadLive2DModel(character);
+
+                overlay.classList.add('hidden');
+            } catch (err) {
+                console.error('Character load request failed:', err);
+                overlayText.textContent = 'Failed to load character - check connection';
+                setTimeout(() => overlay.classList.add('hidden'), 3000);
+            }
+        }
+
+        function connectWebSocket(characterId, summonedByCharacterId = null, handoffReason = null) {
+            const wsBase = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws';
+            const params = new URLSearchParams();
+            if (characterId) params.set('character', characterId);
+            if (summonedByCharacterId) params.set('summoned_by', summonedByCharacterId);
+            if (handoffReason) params.set('handoff_reason', handoffReason);
+            const query = params.toString();
+            const wsUrl = query ? `${wsBase}?${query}` : wsBase;
+            console.log(`Connecting to WebSocket: ${wsUrl}`);
+            
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected!');
+                isConnected = true;
+            };
+
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('Received:', data);
+
+                if (data.type === 'connected') {
+                    // Backend tells us upfront whether a greeting is actually
+                    // coming - if so, lock now rather than waiting for the
+                    // response to arrive (that has real generation latency,
+                    // and leaving things unlocked during that window let
+                    // someone spam another switch/touch mid-greeting, which
+                    // is exactly the kind of overlap that broke things
+                    // before). If no greeting is coming, nothing will ever
+                    // arrive to unlock this, so don't lock in that case.
+                    if (data.greeting_pending) {
+                        setInteractionsLocked(true);
+                    }
+                    return;
+                }
+
+                if (data.type === 'response') {
+                    // Display response in console for now
+                    console.log('Assistant:', data.text);
+
+                    // Lock here too (not just at send-time) - covers the
+                    // unsolicited greeting-on-connect case, which arrives
+                    // without any user action having triggered a lock yet.
+                    // Harmless to also re-set this for normal replies where
+                    // sendMessage/handlePoke already locked things.
+                    setInteractionsLocked(true);
+
+                    // Trigger her expression to match the emotional tone of this reply
+                    if (data.emotion) {
+                        triggerEmotion(data.emotion);
+                    }
+
+                    // If the backend flagged a character switch (user asked to
+                    // talk to someone else), hold onto it - the actual switch
+                    // happens in audio.onended, once she's genuinely finished
+                    // speaking her handoff line, never mid-sentence
+                    pendingCharacterSwitch = data.switch_to || null;
+                    pendingSwitchReason = data.switch_reason || null;
+                    
+                    // Request TTS
+                    ws.send(JSON.stringify({
+                        type: 'tts',
+                        text: data.text,
+                        voice: 'compa'
+                    }));
+                } else if (data.type === 'audio') {
+                    // Play audio and trigger lip sync
+                    playAudioWithLipSync(data.data);
+                } else if (data.type === 'error') {
+                    console.error('Backend error:', data.text);
+                    setInteractionsLocked(false); // no audio will ever arrive for this one
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket disconnected');
+                isConnected = false;
+                // Attempt reconnect after 3 seconds
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        // Maps emotion labels the LLM tags responses with to expression indices -
+        // reassigned per-character by applyCharacterZoneConfig() on load/switch.
+        // Defaults to Compa's mapping so nothing breaks before that first runs.
+        let EMOTION_TO_EXPRESSION = {
+            neutral: 0,
+            happy: 1,
+            angry: 2,
+            sad: 3,
+            sympathetic: 4,
+            surprised: 5,
+            sleeping: 6,
+            crying: 7,
+            shocked: 8,
+            embarrassed: 9
+        };
+
+        // ============================================================
+        // Global interaction lock
+        // ============================================================
+        // While any LLM request is in flight (or she's actively speaking the
+        // result), every interaction path is disabled - chat send, mic, touch
+        // zones - so overlapping LLM/TTS calls can never happen in the first
+        // place. Complements the server-side RVC concurrency fix with a
+        // client-side guarantee that we never even send overlapping requests.
+        let interactionsLocked = false;
+        let lockSafetyTimeout = null;
+
+        function setInteractionsLocked(locked) {
+            interactionsLocked = locked;
+
+            const speakBtn = document.getElementById('speak-btn');
+            const textInput = document.getElementById('text-input');
+            const micBtn = document.getElementById('mic-btn');
+
+            if (speakBtn) {
+                speakBtn.disabled = locked;
+            }
+            if (textInput) {
+                textInput.disabled = locked;
+                textInput.placeholder = locked ? 'Waiting...' : `Say something to ${currentCharacter?.name || ''}…`;
+            }
+            if (micBtn) micBtn.disabled = locked;
+
+            if (locked) {
+                // Safety net - if something falls through the cracks and never
+                // properly unlocks (an edge case we didn't account for), don't
+                // leave the app stuck locked forever
+                if (lockSafetyTimeout) clearTimeout(lockSafetyTimeout);
+                lockSafetyTimeout = setTimeout(() => {
+                    console.warn('Interaction lock safety timeout hit - force unlocking');
+                    setInteractionsLocked(false);
+                }, 20000);
+            } else if (lockSafetyTimeout) {
+                clearTimeout(lockSafetyTimeout);
+                lockSafetyTimeout = null;
+            }
+        }
+
+        function triggerEmotion(emotion) {
+            if (!currentModel) return;
+            const idx = EMOTION_TO_EXPRESSION[emotion];
+            if (idx === undefined) {
+                console.warn(`Unknown emotion "${emotion}", skipping expression trigger`);
+                return;
+            }
+            try {
+                currentModel.expression(idx);
+                console.log(`Emotion triggered: ${emotion} (expression ${idx})`);
+            } catch (err) {
+                console.error(`Failed to trigger emotion "${emotion}":`, err);
+            }
+        }
+
+        // ============================================================
+        // Touch interaction system
+        // ============================================================
+        // Zones are either HOLD (petting) or POKE (discrete touch, with
+        // escalation). Reactions are hardcoded/canned wherever possible;
+        // the LLM is only ever invoked for chest/skirt, and even then the
+        // expression is forced client-side (never left to the LLM's choice)
+        // so boundary-setting behavior is guaranteed, not roleplay-driven.
+
+        // Reassigned per-character by applyCharacterZoneConfig() on load/switch.
+        // Defaults to Compa's config so nothing breaks before that first runs.
+        let PET_ZONES = new Set(['head', 'hair_back']);
+        let LLM_ZONES = new Set(['chest', 'skirt']);
+        let PET_HOLD_THRESHOLD_MS = 2500;
+        const TOUCH_COOLDOWN_MS = 1200; // not character-specific, stays global
+        const ESCALATION_RESET_MS = 6000; // not character-specific, stays global
+
+        let ZONE_LINES = {
+            face: {
+                1: null, // just expression, no line needed at first poke
+                2: ["Hey, careful!", "Hehe, that tickles a little!"]
+            },
+            hand_L: { 2: ["That tickles!", "Hehe, careful there!"] },
+            hand_R: { 2: ["That tickles!", "Hehe, careful there!"] },
+            arm_L: { 2: ["Tee-hee, that tickles!"] },
+            arm_R: { 2: ["Tee-hee, that tickles!"] },
+            neck: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
+            choker: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
+            leg_L: {
+                1: ["Um, that's a little forward...", "H-hey, that's kind of close...", "Oh! Um, please be careful there."],
+                2: ["Hey! That startled me!", "Whoa, please don't do that!", "Hey, please don't!"]
+            },
+            leg_R: {
+                1: ["Um, that's a little forward...", "H-hey, that's kind of close...", "Oh! Um, please be careful there."],
+                2: ["Hey! That startled me!", "Whoa, please don't do that!", "Hey, please don't!"]
+            }
+        };
+
+        let ZONE_EXPRESSIONS = {
+            face: { 1: 'surprised', 2: 'happy' },
+            hand_L: { 1: 'happy', 2: 'happy' },
+            hand_R: { 1: 'happy', 2: 'happy' },
+            arm_L: { 1: 'happy', 2: 'happy' },
+            arm_R: { 1: 'happy', 2: 'happy' },
+            neck: { 1: 'embarrassed', 2: 'embarrassed' },
+            choker: { 1: 'embarrassed', 2: 'embarrassed' },
+            leg_L: { 1: 'embarrassed', 2: 'embarrassed' },
+            leg_R: { 1: 'embarrassed', 2: 'embarrassed' }
+        };
+
+        let lastTouchTime = 0;
+        let zoneEscalation = {}; // zone -> { level, lastTouch }
+        let petState = { active: false, zone: null, startTime: 0 };
+
+        // Applies a character's emotion/zone config to the active module-level
+        // variables above. Called whenever a character's model finishes loading
+        // (initial load or switching characters) - falls back to whatever's
+        // currently set for any field a character doesn't define, so a partial
+        // config won't silently break other reaction types.
+        function applyCharacterZoneConfig(character) {
+            const cfg = character?.zoneConfig;
+            if (!cfg) {
+                console.warn(`Character '${character?.id}' has no zoneConfig - keeping current reaction settings`);
+                return;
+            }
+
+            if (cfg.emotionToExpression) EMOTION_TO_EXPRESSION = cfg.emotionToExpression;
+            if (cfg.petZones) PET_ZONES = new Set(cfg.petZones);
+            if (cfg.llmZones) LLM_ZONES = new Set(cfg.llmZones);
+            if (cfg.petHoldThresholdMs !== undefined) PET_HOLD_THRESHOLD_MS = cfg.petHoldThresholdMs;
+            if (cfg.zoneLines) ZONE_LINES = cfg.zoneLines;
+            if (cfg.zoneExpressions) ZONE_EXPRESSIONS = cfg.zoneExpressions;
+
+            // Reset per-session touch state so a switch doesn't carry over
+            // escalation counters or an in-progress pet from the last character
+            lastTouchTime = 0;
+            zoneEscalation = {};
+            petState = { active: false, zone: null, startTime: 0 };
+
+            console.log(`Applied zone config for '${character.name}'`);
+        }
+
+        function pickRandom(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        async function speakDirectly(text) {
+            // Bypasses the LLM entirely for canned lines - straight to TTS,
+            // same as how the manual expression test buttons work, just with
+            // actual audio output this time.
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/tts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                if (!response.ok) throw new Error(`TTS request failed: ${response.status}`);
+                const blob = await response.blob();
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64 = reader.result.split(',')[1];
+                    playAudioWithLipSync(base64);
+                };
+                reader.readAsDataURL(blob);
+            } catch (err) {
+                console.error('Direct TTS failed:', err);
+            }
+        }
+
+        async function reportTouch(zone, mode) {
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/touch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ zone, mode })
+                });
+                return await response.json();
+            } catch (err) {
+                console.error('Touch report failed:', err);
+                return null;
+            }
+        }
+
+        function getEscalationLevel(zone) {
+            const now = Date.now();
+            const state = zoneEscalation[zone];
+            if (!state || (now - state.lastTouch) > ESCALATION_RESET_MS) {
+                zoneEscalation[zone] = { level: 1, lastTouch: now };
+                return 1;
+            }
+            const newLevel = Math.min(state.level + 1, 2); // cap at level 2 for now
+            zoneEscalation[zone] = { level: newLevel, lastTouch: now };
+            return newLevel;
+        }
+
+        let pendingExpressionReset = null;
+
+        function scheduleExpressionReset(delayMs) {
+            // Independent of audio playback - some reactions (especially level-1
+            // pokes) have no spoken line at all, so relying solely on
+            // audio.onended left those expressions frozen forever with nothing
+            // to ever revert them.
+            if (pendingExpressionReset) clearTimeout(pendingExpressionReset);
+            pendingExpressionReset = setTimeout(() => {
+                triggerEmotion('neutral');
+                pendingExpressionReset = null;
+            }, delayMs);
+        }
+
+        async function handlePoke(zone) {
+            const now = Date.now();
+            if (now - lastTouchTime < TOUCH_COOLDOWN_MS) return;
+            lastTouchTime = now;
+
+            // Cancel any leftover reset timer from a previous poke - otherwise it
+            // can fire mid-wait on THIS poke (especially LLM-routed zones, which
+            // take longer than the 2s reset delay) and snap her back to neutral
+            // before the response/audio even arrives, stomping the expression we're
+            // about to set below.
+            if (pendingExpressionReset) {
+                clearTimeout(pendingExpressionReset);
+                pendingExpressionReset = null;
+            }
+
+            const level = getEscalationLevel(zone);
+            console.log(`Poked: ${zone} (escalation level ${level})`);
+
+            if (LLM_ZONES.has(zone)) {
+                // Chest/skirt: always routes through the LLM for the line, but
+                // the expression is forced regardless of what comes back.
+                setInteractionsLocked(true);
+                triggerEmotion('shocked');
+                const result = await reportTouch(zone, 'llm');
+                if (result && result.text) {
+                    triggerEmotion('shocked'); // force again after response, don't trust any tag
+                    speakDirectly(result.text); // unlocks via audio.onended once she's done
+                } else {
+                    setInteractionsLocked(false); // call failed silently, don't stay stuck locked
+                }
+                return;
+            }
+
+            // Regular poke zones: hardcoded expression + optional canned line
+            const expression = ZONE_EXPRESSIONS[zone]?.[level] || ZONE_EXPRESSIONS[zone]?.[1];
+            if (expression) triggerEmotion(expression);
+
+            await reportTouch(zone, 'canned'); // silently bumps sensitive counter if applicable
+
+            const lines = ZONE_LINES[zone]?.[level];
+            if (lines) {
+                speakDirectly(pickRandom(lines)); // audio.onended will reset expression once she's done
+            } else if (expression) {
+                scheduleExpressionReset(2000); // no line to speak - revert on a timer instead
+            }
+        }
+
+        function handlePetStart(zone) {
+            if (petState.active) return;
+            if (pendingExpressionReset) {
+                clearTimeout(pendingExpressionReset);
+                pendingExpressionReset = null;
+            }
+            petState = { active: true, zone, startTime: Date.now(), happyTimer: null };
+            triggerEmotion('sleeping');
+            console.log(`Petting started: ${zone}`);
+
+            // At the hold threshold, switch to happy WHILE STILL BEING PET -
+            // a visible "okay, this counts now" moment - but she still only
+            // speaks once you actually release, never mid-hold.
+            petState.happyTimer = setTimeout(() => {
+                if (petState.active) {
+                    triggerEmotion('happy');
+                    console.log('Pet threshold reached mid-hold - now happy');
+                }
+            }, PET_HOLD_THRESHOLD_MS);
+        }
+
+        async function handlePetEnd() {
+            if (!petState.active) return;
+            const duration = Date.now() - petState.startTime;
+            const zone = petState.zone;
+            if (petState.happyTimer) clearTimeout(petState.happyTimer);
+            petState = { active: false, zone: null, startTime: 0, happyTimer: null };
+
+            console.log(`Petting ended: ${zone} (${duration}ms)`);
+
+            if (duration < PET_HOLD_THRESHOLD_MS) {
+                // Too short for a real reaction - just settle back quietly
+                triggerEmotion('neutral');
+            } else {
+                // A proper pet - the mid-hold timer already switched her to happy;
+                // she now actually responds, genuinely happy about it
+                setInteractionsLocked(true);
+                const result = await reportTouch(zone, 'pet_happy');
+                if (result && result.text) {
+                    triggerEmotion('happy'); // force again after response, don't trust any tag
+                    speakDirectly(result.text); // unlocks via audio.onended once she's done
+                } else {
+                    scheduleExpressionReset(2000); // fallback if the LLM call failed silently
+                    setInteractionsLocked(false);
+                }
+            }
+        }
+
+        function setupTouchInteractions() {
+            if (!currentModel || !app) return;
+
+            currentModel.interactive = true;
+            currentModel.buttonMode = true;
+
+            const onPointerDown = (event) => {
+                if (interactionsLocked) return;
+                const point = event.data.global;
+                const hitAreas = currentModel.hitTest(point.x, point.y);
+
+                let zone = (hitAreas && hitAreas.length > 0) ? hitAreas[0] : null;
+
+                if (!zone) {
+                    // No named HitAreas on this model (or the tap missed all
+                    // of them) - fall back to rectangular zones built from
+                    // calibration taps, if this character has any defined
+                    try {
+                        const bounds = currentModel.getBounds();
+                        const relX = (point.x - bounds.x) / bounds.width;
+                        const relY = (point.y - bounds.y) / bounds.height;
+
+                        const rectZones = currentCharacter?.zoneConfig?.rectZones || [];
+                        const match = rectZones.find(z => relX >= z.xMin && relX <= z.xMax && relY >= z.yMin && relY <= z.yMax);
+
+                        if (match) {
+                            zone = match.name;
+                            console.log(`Rect zone matched: ${zone} (x=${relX.toFixed(2)}, y=${relY.toFixed(2)})`);
+                        } else {
+                            // Still nothing - log position for further calibration
+                            console.log(`No zone registered here. Relative position: x=${relX.toFixed(2)}, y=${relY.toFixed(2)} (0,0 = top-left of model, 1,1 = bottom-right)`);
+                            return;
+                        }
+                    } catch (err) {
+                        console.warn('Could not compute relative tap position:', err);
+                        return;
+                    }
+                } else {
+                    console.log('Hit zone:', zone);
+                }
+
+                if (PET_ZONES.has(zone)) {
+                    handlePetStart(zone);
+                } else {
+                    handlePoke(zone);
+                }
+            };
+
+            const onPointerUp = () => {
+                if (petState.active) {
+                    handlePetEnd();
+                }
+            };
+
+            currentModel.on('pointerdown', onPointerDown);
+
+            // Use a global release listener rather than PIXI's model-specific
+            // pointerup/pointerupoutside - those weren't reliably firing,
+            // likely due to hit-area precision at release position. Since
+            // petState is already tracked in plain JS, we don't need PIXI's
+            // hit-testing for the "release" side at all - just "did a pointer
+            // go up anywhere while petting was active".
+            window.addEventListener('pointerup', onPointerUp);
+            window.addEventListener('touchend', onPointerUp);
+        }
+
+        let activePlaybackId = 0; // tracks the most recent audio playback, so a stale/superseded audio's onended can't incorrectly clear state for a newer one still playing
+
+        function playAudioWithLipSync(audioBase64) {
+            const audio = new Audio('data:audio/wav;base64,' + audioBase64);
+            const thisPlaybackId = ++activePlaybackId;
+
+            const speakBtn = document.getElementById('speak-btn');
+
+            audio.play().then(() => {
+                if (thisPlaybackId !== activePlaybackId) return; // superseded before it even started
+                speakBtn.classList.add('speaking');
+                speakBtn.textContent = '🔊';
+
+                // Only start lip sync once playback has ACTUALLY begun - doing
+                // this on 'loadedmetadata' instead (which fires before real
+                // audio is flowing) was reading silence/noise from the
+                // analyser, causing rapid erratic mouth flapping during the
+                // gap between "audio ready" and playback genuinely starting
+                const durationMs = audio.duration * 1000;
+                setupAudioAnalysis(audio);
+                startLipSync(durationMs);
+            }).catch(err => {
+                console.warn('Audio playback blocked (likely browser autoplay restriction):', err);
+                if (thisPlaybackId !== activePlaybackId) return;
+                // Don't leave the button stuck showing "speaking" if playback never started
+                speakBtn.classList.remove('speaking');
+                speakBtn.textContent = 'Send';
+            });
+
+            audio.onended = () => {
+                // A stale/superseded audio finishing shouldn't clear state for
+                // whatever's actually playing now - only the most recent
+                // playback is allowed to affect the speaking indicator/lock
+                if (thisPlaybackId !== activePlaybackId) return;
+
+                speakBtn.classList.remove('speaking');
+                speakBtn.textContent = 'Send';
+                setInteractionsLocked(false);
+
+                // If a character switch was flagged on this response, she's
+                // now genuinely done saying her handoff line - perform the
+                // actual switch (same loading-screen flow as tapping the
+                // sidebar) rather than doing it mid-sentence
+                if (pendingCharacterSwitch) {
+                    const targetId = pendingCharacterSwitch;
+                    const reason = pendingSwitchReason;
+                    pendingCharacterSwitch = null;
+                    pendingSwitchReason = null;
+                    const summonerId = currentCharacter?.id || null; // capture before it gets overwritten
+                    const targetCharacter = CHARACTERS.find(c => c.id === targetId);
+                    if (targetCharacter) {
+                        switchCharacter(targetCharacter, summonerId, reason);
+                        document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
+                        const item = document.querySelector(`.character-item[data-character-id="${targetId}"]`);
+                        if (item) item.classList.add('active');
+                    } else {
+                        console.warn(`Backend requested switch to unknown character '${targetId}'`);
+                    }
+                    return; // skip the normal neutral-reset/mic-restart below - switchCharacter handles everything now
+                }
+
+                // Return to neutral a beat after she stops talking, so the
+                // expression doesn't stay frozen until the next message.
+                // Same timing gates the mic auto-restart (if enabled) - both
+                // happen together once she's genuinely done.
+                setTimeout(() => {
+                    triggerEmotion('neutral');
+                    if (micAlwaysOn) {
+                        startListening();
+                    }
+                }, 1000);
+            };
+        }
+
+        // Text input handler
+        // Keep the character completely fixed in size/position when the mobile keyboard
+        // opens - it should look like the keyboard is overlaying on top of her, not like
+        // she's shrinking or the page is reflowing. --app-height is locked to the initial
+        // screen height and NEVER updated on keyboard open. Only the chat bar's floating
+        // offset responds to the keyboard, via --keyboard-offset.
+        function setupViewportHandling() {
+            const textInput = document.getElementById('text-input');
+
+            function captureAppHeight() {
+                // Don't recapture while the keyboard is open - that would lock in
+                // a shrunk height permanently
+                if (document.activeElement === textInput) return;
+                // Lock to current window height to prevent character squashing
+                const h = window.innerHeight;
+                document.documentElement.style.setProperty('--app-height', `${h}px`);
+            }
+
+            async function fetchVersion() {
+                try {
+                    // Add cache buster to ensure we get the latest SW version info
+                    const response = await fetch('./sw.js?t=' + Date.now());
+                    const text = await response.text();
+                    const match = text.match(/const SW_VERSION = '(.+?)'/);
+                    if (match && match[1]) {
+                        document.getElementById('pod-version').textContent = match[1];
+                    }
+                } catch (e) {
+                    console.warn('Failed to fetch version from sw.js', e);
+                }
+            }
+
+            // Capture initial height immediately
+            captureAppHeight();
+            fetchVersion();
+
+            // pageshow fires reliably both on a fresh page load AND when returning
+            // from background/another app (unlike load, which only fires once) -
+            // this is the actual event underlying the "switch out and back" fix,
+            // so listening to it directly is more robust than guessing with timers
+            window.addEventListener('pageshow', () => {
+                captureAppHeight();
+            });
+
+            function updateViewport() {
+                if (window.visualViewport) {
+                    requestAnimationFrame(() => {
+                        const vv = window.visualViewport;
+                        
+                        // 1. Calculate how much the keyboard is pushing up
+                        const kbHeight = Math.max(0, window.innerHeight - vv.height);
+                        document.documentElement.style.setProperty('--kb-height', `${Math.max(0, kbHeight - vv.offsetTop)}px`);
+
+                        // 2. Counteract the browser's 'pan' by shifting pinned elements down
+                        // This keeps the Pod Link and Character from sliding off the top
+                        const offset = vv.offsetTop;
+                        const pinnedElements = [
+                            document.getElementById('status-info'),
+                            document.getElementById('canvas-container')
+                        ];
+                        pinnedElements.forEach(el => {
+                            if (el) el.style.transform = `translateY(${offset}px)`;
+                        });
+                    });
+
+                    // 3. Keep layout locked at 0,0
+                    if (window.scrollY !== 0) {
+                        window.scrollTo(0, 0);
+                    }
+                }
+            }
+
+            if (window.visualViewport) {
+                window.visualViewport.addEventListener('resize', updateViewport);
+                window.visualViewport.addEventListener('scroll', updateViewport);
+            }
+
+            // Extra defense: browsers often try to scroll again after the focus event
+            textInput.addEventListener('focus', () => {
+                setTimeout(() => window.scrollTo(0, 0), 0);
+                setTimeout(() => window.scrollTo(0, 0), 100);
+                setTimeout(() => window.scrollTo(0, 0), 300);
+            });
+
+            // Only update --app-height on genuine device rotation/window resize,
+            // not on keyboard show/hide (detected by a significant width change)
+            let lastWidth = window.innerWidth;
+            window.addEventListener('resize', () => {
+                if (window.innerWidth !== lastWidth) {
+                    lastWidth = window.innerWidth;
+                    captureAppHeight();
+                }
+            });
+        }
+
+        // Voice input via browser-native Speech Recognition - top-level scope so
+        // both the manual mic button AND the auto-restart-after-she-speaks logic
+        // (in playAudioWithLipSync) can both reach it.
+        const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+        let recognition = null;
+        let isListening = false;
+        let micAlwaysOn = localStorage.getItem('compa_mic_always_on') === 'true'; // default OFF on first-ever load
+
+        function setupVoiceInput(sendMessageFn) {
+            const micBtn = document.getElementById('mic-btn');
+            const textInput = document.getElementById('text-input');
+
+            if (!SpeechRecognitionAPI) {
+                console.warn('Speech Recognition not supported in this browser - hiding mic button');
+                micBtn.style.display = 'none';
+                document.getElementById('toggle-mic-always-on').closest('.toggle-option').style.display = 'none';
+                return;
+            }
+
+            recognition = new SpeechRecognitionAPI();
+            recognition.continuous = false;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onstart = () => {
+                isListening = true;
+                micBtn.classList.add('listening');
+                micBtn.textContent = '⏹️';
+                textInput.placeholder = 'Listening...';
+            };
+
+            recognition.onresult = (event) => {
+                let transcript = '';
+                for (let i = 0; i < event.results.length; i++) {
+                    transcript += event.results[i][0].transcript;
+                }
+                textInput.value = transcript;
+
+                // Final result - send automatically, like actually talking to her.
+                // This also naturally turns the mic off (recognition auto-stops
+                // after a final result since continuous=false).
+                if (event.results[event.results.length - 1].isFinal) {
+                    sendMessageFn();
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('Speech recognition error:', event.error);
+                if (event.error === 'not-allowed') {
+                    textInput.placeholder = 'Microphone access denied';
+                }
+            };
+
+            recognition.onend = () => {
+                isListening = false;
+                micBtn.classList.remove('listening');
+                micBtn.textContent = '🎤';
+                textInput.placeholder = `Say something to ${currentCharacter?.name || ''}…`;
+            };
+
+            micBtn.addEventListener('click', () => {
+                if (isListening) {
+                    recognition.stop();
+                } else {
+                    startListening();
+                }
+            });
+
+            // Mic-always-on toggle: persists in localStorage, but defaults to
+            // OFF on a genuinely first-ever load (no saved value yet)
+            const micAlwaysOnToggle = document.getElementById('toggle-mic-always-on');
+            micAlwaysOnToggle.checked = micAlwaysOn;
+            micAlwaysOnToggle.addEventListener('change', (e) => {
+                micAlwaysOn = e.target.checked;
+                localStorage.setItem('compa_mic_always_on', micAlwaysOn ? 'true' : 'false');
+            });
+        }
+
+        function startListening() {
+            if (!recognition || isListening) return;
+            try {
+                recognition.start();
+            } catch (err) {
+                console.error('Failed to start speech recognition:', err);
+            }
+        }
+
+        function initTextInput() {
+            const textInput = document.getElementById('text-input');
+            const speakBtn = document.getElementById('speak-btn');
+
+            // Mobile browsers sometimes force-scroll the document when an input
+            // gets focus, even with overflow:hidden everywhere - fight back by
+            // resetting scroll position immediately and shortly after (some
+            // browsers apply their scroll after a brief delay)
+            textInput.addEventListener('focus', () => {
+                window.scrollTo(0, 0);
+                setTimeout(() => window.scrollTo(0, 0), 50);
+                setTimeout(() => window.scrollTo(0, 0), 300);
+            });
+
+            const sendMessage = () => {
+                if (interactionsLocked) return;
+                const text = textInput.value.trim();
+                if (!text || !isConnected) return;
+
+                console.log('Sending:', text);
+                setInteractionsLocked(true);
+
+                ws.send(JSON.stringify({
+                    type: 'message',
+                    text: text
+                }));
+
+                textInput.value = '';
+            };
+
+            speakBtn.addEventListener('click', sendMessage);
+            textInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') sendMessage();
+            });
+
+            setupVoiceInput(sendMessage);
+        }
+
+        // Initialize everything
+        async function init() {
+            console.log('🎭 Initializing Live2D system...');
+            
+            initPixi();
+            initCharacterSelector();
+            initTextInput();
+            setupViewportHandling();
+            initTestLipSync();
+            
+            // Ask the backend which character is actually active - it owns
+            // this fact now (persisted to disk, survives restarts/devices),
+            // not something the frontend should assume or track itself
+            let startupCharacter = CHARACTERS[0];
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/character/active`, {
+                    signal: AbortSignal.timeout(5000)
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    const match = CHARACTERS.find(c => c.id === data.character_id);
+                    if (match) {
+                        startupCharacter = match;
+                        console.log(`Backend reports active character: ${data.name}`);
+                    } else {
+                        console.warn(`Backend's active character '${data.character_id}' isn't in the local CHARACTERS list - falling back to default`);
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not reach backend to check active character, defaulting to first in list:', err);
+            }
+
+            // Load whichever character that turned out to be
+            await loadLive2DModel(startupCharacter);
+            // Fix the sidebar highlight to match - initCharacterSelector()
+            // defaulted to highlighting the first entry before we knew which
+            // character was actually active, so correct that now
+            document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
+            const activeItem = document.querySelector(`.character-item[data-character-id="${startupCharacter.id}"]`);
+            if (activeItem) activeItem.classList.add('active');
+            
+            // Connect to backend, scoped to that same character
+            connectWebSocket(startupCharacter.id);
+            
+            console.log('✅ System ready!');
+        }
+
+        // Start the app
+        init();
+    </script>
+    <script>
+        // Register service worker for PWA install/offline shell support
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then((reg) => console.log('Service worker registered:', reg.scope))
+                    .catch((err) => console.error('Service worker registration failed:', err));
+            });
+
+            // A new service worker doesn't control the page that triggered
+            // its install - even with skipWaiting()/clients.claim(), THIS
+            // page load is still served by whatever worker was active before
+            // the reload started, so sub-resource fetches (JS, model files)
+            // can come from the old cache until a second reload. Auto-reload
+            // once when control actually changes hands, so updates complete
+            // in one refresh instead of needing a manual second hard-refresh.
+            let hasReloaded = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (hasReloaded) return; // guard against reload loops
+                hasReloaded = true;
+                console.log('New service worker took control - reloading to complete the update');
+                window.location.reload();
+            });
+        }
+    </script>
+</body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual">
+    <meta name="theme-color" content="#05070d">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CPU Pod">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="./compa-icon-192.png">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎭</text></svg>">
+    <title>CPU - Pod Interface</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --void: #05070d;
+            --void-2: #0a0e1a;
+            --panel: rgba(12, 18, 32, 0.72);
+            --panel-solid: #0c1220;
+            --hairline: rgba(103, 232, 249, 0.16);
+            --cyan: #67e8f9;
+            --cyan-dim: rgba(103, 232, 249, 0.5);
+            --magenta: #f472b6;
+            --text: #e8f4f8;
+            --text-dim: rgba(232, 244, 248, 0.56);
+            --danger: #fb7185;
+            --font-display: 'Space Grotesk', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            height: 100%;
+            height: var(--app-height, 100%);
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+        }
+
+        body {
+            font-family: var(--font-display);
+            background: radial-gradient(ellipse 120% 80% at 50% 15%, #131b2e 0%, var(--void-2) 45%, var(--void) 100%);
+            color: var(--text);
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+            top: 0;
+            left: 0;
+            height: var(--app-height, 100vh);
+            overscroll-behavior: none;
+        }
+
+        /* Ambient scan-line texture — the pod's projection field */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+            background: repeating-linear-gradient(
+                to bottom,
+                rgba(103, 232, 249, 0.015) 0px,
+                rgba(103, 232, 249, 0.015) 1px,
+                transparent 1px,
+                transparent 3px
+            );
+        }
+
+        #canvas-container {
+            width: 100%;
+            height: var(--app-height, 100vh);
+            position: relative;
+            touch-action: none;
+        }
+
+        /* Breathing glow behind the character, like a projector core */
+        #canvas-container::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: min(70vw, 640px);
+            height: min(70vw, 640px);
+            transform: translate(-50%, -55%);
+            background: radial-gradient(circle, rgba(103, 232, 249, 0.10) 0%, rgba(244, 114, 182, 0.05) 45%, transparent 72%);
+            animation: pulse-core 5s ease-in-out infinite;
+            pointer-events: none;
+        }
+
+        @keyframes pulse-core {
+            0%, 100% { opacity: 0.7; transform: translate(-50%, -55%) scale(1); }
+            50% { opacity: 1; transform: translate(-50%, -55%) scale(1.05); }
+        }
+
+        #live2d-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            z-index: 2;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--text);
+            font-size: 14px;
+            font-family: var(--font-mono);
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .spinner {
+            border: 2px solid rgba(103, 232, 249, 0.12);
+            border-radius: 50%;
+            border-top: 2px solid var(--cyan);
+            width: 36px;
+            height: 36px;
+            animation: spin 0.9s linear infinite;
+            margin: 0 auto 18px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        #error {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: var(--danger);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            text-align: center;
+            z-index: 10;
+            display: none;
+            padding: 18px 22px;
+            background: var(--panel-solid);
+            border: 1px solid rgba(251, 113, 133, 0.35);
+            border-radius: 4px;
+            max-width: 80%;
+        }
+
+        /* Message input dock */
+        #text-input-container {
+            position: fixed;
+            bottom: calc(24px + var(--kb-height, 0px));
+            left: 50%;
+            transform: translateX(-50%);
+            width: 92%;
+            max-width: 560px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        #text-input {
+            flex: 1;
+            min-width: 0;
+            background: var(--panel);
+            border: 1px solid var(--hairline);
+            border-radius: 8px;
+            padding: 14px 18px;
+            color: var(--text);
+            font-family: var(--font-display);
+            font-size: 15px;
+            outline: none;
+            backdrop-filter: blur(16px);
+            transition: border-color 0.2s;
+        }
+
+        #text-input::placeholder {
+            color: var(--text-dim);
+        }
+
+        #text-input:focus {
+            border-color: var(--cyan-dim);
+        }
+
+        #text-input:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #speak-btn {
+            background: var(--cyan);
+            border: none;
+            border-radius: 8px;
+            padding: 14px 26px;
+            color: var(--void);
+            font-family: var(--font-display);
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+            white-space: nowrap;
+        }
+
+        #speak-btn:hover {
+            background: #8ff0ff;
+            transform: translateY(-1px);
+        }
+
+        #speak-btn.speaking {
+            background: var(--magenta);
+            color: var(--void);
+        }
+
+        #speak-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        @media (max-width: 480px) {
+            #text-input-container {
+                width: 96%;
+                gap: 6px;
+            }
+            #speak-btn {
+                padding: 14px 16px;
+            }
+            #mobile-menu-btn, #mic-btn {
+                width: 40px;
+            }
+        }
+
+        #mobile-menu-btn {
+            display: none;
+            background: var(--panel);
+            border: 1px solid var(--hairline);
+            border-radius: 8px;
+            width: 46px;
+            flex-shrink: 0;
+            color: var(--cyan);
+            font-size: 18px;
+            cursor: pointer;
+            backdrop-filter: blur(16px);
+        }
+
+        @media (max-width: 768px) {
+            #mobile-menu-btn {
+                display: block;
+            }
+        }
+
+        #mic-btn {
+            background: var(--panel);
+            border: 1px solid var(--hairline);
+            border-radius: 8px;
+            width: 46px;
+            flex-shrink: 0;
+            color: var(--cyan);
+            font-size: 18px;
+            cursor: pointer;
+            backdrop-filter: blur(16px);
+            transition: all 0.2s;
+        }
+
+        #mic-btn:hover {
+            border-color: var(--cyan-dim);
+            background: rgba(103, 232, 249, 0.08);
+        }
+
+        #mic-btn.listening {
+            background: var(--magenta);
+            border-color: var(--magenta);
+            color: var(--void);
+            animation: mic-pulse 1.2s ease-in-out infinite;
+        }
+
+        @keyframes mic-pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(244, 114, 182, 0.5); }
+            50% { box-shadow: 0 0 0 10px rgba(244, 114, 182, 0); }
+        }
+
+        #mic-btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        /* Character selector toggle - Desktop only */
+        #character-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--panel);
+            border: 1px solid var(--hairline);
+            border-radius: 8px;
+            width: 44px;
+            height: 44px;
+            color: var(--cyan);
+            font-size: 18px;
+            cursor: pointer;
+            z-index: 101;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(16px);
+            transition: all 0.2s;
+        }
+
+        #character-toggle:hover {
+            border-color: var(--cyan-dim);
+            background: rgba(103, 232, 249, 0.08);
+        }
+
+        @media (max-width: 768px) {
+            #character-toggle {
+                display: none;
+            }
+        }
+
+        #character-menu {
+            position: fixed;
+            right: -320px;
+            top: 0;
+            width: 300px;
+            height: 100%;
+            background: rgba(8, 12, 22, 0.94);
+            border-left: 1px solid var(--hairline);
+            backdrop-filter: blur(20px);
+            transition: right 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+            z-index: 100;
+            overflow-y: auto;
+            padding: 24px 20px;
+        }
+
+        #character-menu.open {
+            right: 0;
+        }
+
+        @media (max-width: 768px) {
+            #character-menu {
+                right: auto;
+                left: 0;
+                top: auto;
+                bottom: -75vh;
+                width: 100%;
+                height: 75vh;
+                border-left: none;
+                border-top: 1px solid var(--hairline);
+                border-radius: 16px 16px 0 0;
+                transition: bottom 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+            }
+
+            #character-menu.open {
+                bottom: 0;
+            }
+        }
+
+        #character-menu h2 {
+            color: var(--text);
+            font-size: 13px;
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin: 0 0 20px 0;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--hairline);
+        }
+
+        /* Live editing controls */
+        #edit-controls {
+            background: rgba(103, 232, 249, 0.04);
+            border: 1px solid var(--hairline);
+            border-radius: 6px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        #edit-controls h3 {
+            color: var(--cyan);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin: 0 0 14px 0;
+        }
+
+        .control-group {
+            margin-bottom: 14px;
+        }
+
+        .control-group label {
+            display: block;
+            color: var(--text-dim);
+            font-size: 11px;
+            margin-bottom: 6px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .control-row input[type="range"] {
+            flex: 1;
+            height: 3px;
+            border-radius: 2px;
+            background: rgba(255, 255, 255, 0.12);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        .control-row input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background: var(--cyan);
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(103, 232, 249, 0.5);
+        }
+
+        .control-row input[type="range"]::-moz-range-thumb {
+            width: 13px;
+            height: 13px;
+            border-radius: 50%;
+            background: var(--cyan);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 8px rgba(103, 232, 249, 0.5);
+        }
+
+        .control-row span {
+            color: var(--cyan);
+            font-size: 11px;
+            min-width: 46px;
+            text-align: right;
+            font-family: var(--font-mono);
+        }
+
+        .control-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .control-buttons button {
+            flex: 1;
+            padding: 9px;
+            border: 1px solid transparent;
+            border-radius: 5px;
+            font-family: var(--font-display);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-reset {
+            background: rgba(251, 113, 133, 0.12);
+            border-color: rgba(251, 113, 133, 0.3);
+            color: var(--danger);
+        }
+
+        .btn-reset:hover {
+            background: rgba(251, 113, 133, 0.2);
+        }
+
+        .btn-copy {
+            background: rgba(103, 232, 249, 0.12);
+            border-color: var(--hairline);
+            color: var(--cyan);
+        }
+
+        .btn-copy:hover {
+            background: rgba(103, 232, 249, 0.2);
+        }
+
+        .character-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--hairline);
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .character-item:hover {
+            background: rgba(103, 232, 249, 0.06);
+            border-color: var(--cyan-dim);
+        }
+
+        .character-item.active {
+            background: rgba(103, 232, 249, 0.1);
+            border-color: var(--cyan);
+        }
+
+        .character-name {
+            color: var(--text);
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .character-desc {
+            color: var(--text-dim);
+            font-size: 11px;
+        }
+
+        #status-info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: var(--panel);
+            border: 1px solid var(--hairline);
+            padding: 10px 14px;
+            border-radius: 8px;
+            color: var(--text);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            letter-spacing: 0.02em;
+            z-index: 10;
+            backdrop-filter: blur(16px);
+        }
+
+        #status-info div:first-child {
+            color: var(--cyan);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 10px;
+            margin-bottom: 4px;
+        }
+
+        /* Position/Scale display at bottom */
+        #position-display {
+            position: fixed;
+            bottom: 84px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--panel-solid);
+            border: 1px solid var(--hairline);
+            padding: 8px 14px;
+            border-radius: 6px;
+            color: var(--cyan);
+            font-size: 11px;
+            font-family: var(--font-mono);
+            z-index: 10;
+            backdrop-filter: blur(16px);
+            display: none;
+            white-space: pre;
+        }
+
+        #position-display.always-visible {
+            display: block;
+        }
+
+        /* Settings toggle section */
+        .settings-section {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--hairline);
+            border-radius: 6px;
+            padding: 14px;
+            margin-bottom: 16px;
+        }
+
+        .settings-section h3 {
+            color: var(--cyan);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin: 0 0 12px 0;
+        }
+
+        .toggle-option {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .toggle-option label {
+            color: var(--text-dim);
+            font-size: 12px;
+            flex: 1;
+        }
+
+        /* Toggle switch */
+        .toggle-switch {
+            position: relative;
+            width: 40px;
+            height: 22px;
+            cursor: pointer;
+        }
+
+        .toggle-option .toggle-switch {
+            flex: none;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-slider {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.12);
+            border-radius: 22px;
+            transition: 0.25s;
+        }
+
+        .toggle-slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: var(--text);
+            border-radius: 50%;
+            transition: 0.25s;
+        }
+
+        .toggle-switch input:checked + .toggle-slider {
+            background-color: var(--cyan);
+        }
+
+        .toggle-switch input:checked + .toggle-slider:before {
+            transform: translateX(18px);
+            background-color: var(--void);
+        }
+
+        /* Hide edit controls when toggled off */
+        .hidden {
+            display: none;
+        }
+
+        #character-switch-loading {
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(5, 7, 13, 0.92);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+
+        #character-switch-loading.hidden {
+            display: none;
+        }
+
+        #character-switch-loading-text {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            color: var(--text);
+            text-align: center;
+            padding: 0 20px;
+        }
+
+        #edit-controls.hidden {
+            display: none;
+        }
+
+        /* Test lip sync button */
+        #test-lipsync {
+            position: fixed;
+            top: 74px;
+            left: 20px;
+            background: var(--panel);
+            border: 1px solid rgba(244, 114, 182, 0.3);
+            border-radius: 8px;
+            padding: 9px 14px;
+            color: var(--magenta);
+            font-family: var(--font-display);
+            font-size: 11px;
+            font-weight: 500;
+            cursor: pointer;
+            z-index: 10;
+            backdrop-filter: blur(16px);
+            transition: all 0.2s;
+        }
+
+        #test-lipsync:hover {
+            background: rgba(244, 114, 182, 0.1);
+            border-color: var(--magenta);
+        }
+
+        @media (max-width: 768px) {
+            #test-lipsync {
+                display: none; /* Hide on mobile */
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            #canvas-container::before,
+            .spinner {
+                animation: none;
+            }
+        }
+        .btn {
+            padding: 8px 14px;
+            border-radius: 6px;
+            border: 1px solid var(--hairline);
+            font-family: var(--font-display);
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--text);
+        }
+
+        .btn:hover {
+            background: rgba(103, 232, 249, 0.08);
+            border-color: var(--cyan-dim);
+        }
+
+        .btn.secondary {
+            background: rgba(103, 232, 249, 0.06);
+            border-color: var(--hairline);
+            color: var(--cyan);
+        }
+
+        .btn.secondary:hover {
+            background: rgba(103, 232, 249, 0.14);
+        }
+
+        .btn.secondary.active {
+            background: var(--cyan);
+            color: var(--void);
+            border-color: var(--cyan);
+        }
+
+        .btn.ghost {
+            background: transparent;
+            border-color: rgba(251, 113, 133, 0.3);
+            color: var(--danger);
+        }
+
+        .btn.ghost:hover {
+            background: rgba(251, 113, 133, 0.08);
+        }
+
+        .mt-2 { margin-top: 8px; }
+        .flex-row { display: flex; flex-direction: row; align-items: center; }
+        .flex-col { display: flex; flex-direction: column; }
+        .flex-wrap { flex-wrap: wrap; }
+        .gap-2 { gap: 8px; }
+        .mb-2 { margin-bottom: 8px; }
+
+        .param-value {
+            color: var(--cyan);
+            font-size: 11px;
+            min-width: 42px;
+            text-align: right;
+            font-family: var(--font-mono);
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="live2d-canvas"></canvas>
+    </div>
+
+    <div id="loading">
+        <div class="spinner"></div>
+        <div>Initializing hologram</div>
+    </div>
+
+    <div id="character-switch-loading" class="hidden">
+        <div class="spinner"></div>
+        <div id="character-switch-loading-text">
+            Loading character...
+        </div>
+    </div>
+
+    <div id="error"></div>
+
+    <div id="status-info">
+        <div>Pod link <span id="pod-version" style="opacity: 0.5; font-size: 8px; margin-left: 4px; font-family: var(--font-mono); border: 1px solid rgba(103, 232, 249, 0.2); padding: 1px 3px; border-radius: 3px;"></span></div>
+        <div id="model-status">No model loaded</div>
+    </div>
+
+    <button id="test-lipsync">Test voice sync</button>
+
+    <!-- Character selector toggle button -->
+    <button id="character-toggle">☰</button>
+
+    <!-- Character selection menu -->
+    <div id="character-menu">
+        <h2>Select character</h2>
+
+        <!-- Settings Section -->
+        <div class="settings-section">
+            <h3>Settings</h3>
+
+            <div class="toggle-option">
+                <label>Mic always on</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-mic-always-on">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-option" style="margin-bottom: 0;">
+                <label>Show debug settings</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-debug-settings">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Everything below is hidden unless "Show debug settings" is on -->
+        <div id="debug-settings-panel" class="hidden">
+
+            <div class="settings-section">
+                <h3>Debug</h3>
+
+                <div class="toggle-option">
+                    <label>Show position controls</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-edit-controls" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+
+                <div class="toggle-option">
+                    <label>Always show position readout</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-position-display">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Live voice tuning - test values before hardcoding them into
+                 CHARACTERS. Doesn't persist anything, purely for testing. -->
+            <div class="settings-section">
+                <h3>Voice tuning (testing)</h3>
+                <p class="form-hint mb-2">Adjust and apply to hear it live. Once you like it, tell me the values to hardcode.</p>
+
+                <div class="control-group">
+                    <label>Base voice</label>
+                    <select id="voice-tune-select" style="width: 100%; background: var(--panel); border: 1px solid var(--hairline); border-radius: 6px; padding: 8px 10px; color: var(--text); font-family: var(--font-display); font-size: 13px;">
+                        <option value="en-US-EmmaNeural">Emma - Cheerful</option>
+                        <option value="en-US-AvaNeural">Ava - Expressive, Caring</option>
+                        <option value="en-US-JennyNeural">Jenny - Friendly, Comfort</option>
+                        <option value="en-US-AriaNeural">Aria - Positive, Confident</option>
+                        <option value="en-US-AnaNeural">Ana - Cute, Cartoon</option>
+                        <option value="en-US-MichelleNeural">Michelle - Friendly, Pleasant</option>
+                        <option value="en-US-GuyNeural">Guy (male) - Passion</option>
+                        <option value="en-US-ChristopherNeural">Christopher (male) - Reliable</option>
+                        <option value="en-US-RogerNeural">Roger (male) - Lively</option>
+                        <option value="en-US-EricNeural">Eric (male) - Rational</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Pitch</label>
+                    <div class="control-row">
+                        <input type="range" id="voice-tune-pitch" min="-12" max="20" step="1" value="10">
+                        <span id="voice-tune-pitch-value">10</span>
+                    </div>
+                </div>
+
+                <button class="btn secondary" id="voice-tune-apply" style="width: 100%;">Apply to current character</button>
+                <p id="voice-tune-status" class="form-hint mt-2" style="opacity: 0.7;"></p>
+            </div>
+
+            <!-- Live editing controls -->
+            <div id="edit-controls">
+                <h3>Position &amp; scale</h3>
+
+                <div class="control-group">
+                    <label>Base scale</label>
+                    <div class="control-row">
+                        <input type="range" id="scale-slider" min="0.05" max="0.5" step="0.01" value="0.15">
+                        <span id="scale-value">0.15</span>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Position X (left ← → right)</label>
+                    <div class="control-row">
+                        <input type="range" id="x-slider" min="-0.3" max="0.3" step="0.01" value="0">
+                        <span id="x-value">0.00</span>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>Position Y (up ↑ ↓ down)</label>
+                    <div class="control-row">
+                        <input type="range" id="y-slider" min="-0.3" max="0.3" step="0.01" value="0.1">
+                        <span id="y-value">0.10</span>
+                    </div>
+                </div>
+
+                <div class="control-buttons">
+                    <button class="btn-reset" id="reset-btn">Reset</button>
+                    <button class="btn-copy" id="copy-btn">Copy config</button>
+                </div>
+            </div>
+
+            <!-- Emotion/expression test buttons - populated dynamically based
+                 on however many expressions the currently loaded model
+                 actually has, since different characters' rigs have
+                 different counts. Labels are editable and saved per-character
+                 so you can name them for reference as you figure out what
+                 each one is. -->
+            <div class="settings-section">
+                <h3>Emotions (testing)</h3>
+                <p class="form-hint mb-2">Click to test, type a name once you know what it is - saved for this character.</p>
+                <div id="expression-buttons" class="flex-col gap-2">
+                    <p class="form-hint" style="opacity: 0.6;">Load a character to see their expressions here.</p>
+                </div>
+            </div>
+
+            <!-- Raw parameter testing panel - for exploring unlabeled params and building custom expressions -->
+            <div class="settings-section">
+                <div class="toggle-option" style="margin-bottom: 0;">
+                    <label>Raw parameters (advanced)</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-raw-params">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="raw-params-panel" class="hidden" style="margin-top: 12px; max-height: 320px; overflow-y: auto;">
+                    <p class="form-hint mb-2">Live parameter sliders. Move one to see what it controls, then use combinations to build custom expressions.</p>
+                    <div id="raw-params-list"></div>
+                    <button class="btn ghost mt-2" id="raw-params-reset" style="width: 100%;">Reset all to default</button>
+                </div>
+            </div>
+
+        </div>
+
+        <div id="character-list">
+            <!-- Characters will be populated here -->
+        </div>
+    </div>
+
+    <div id="position-display"></div>
+
+    <!-- Text input -->
+    <div id="text-input-container">
+        <button id="mobile-menu-btn" aria-label="Open menu">☰</button>
+        <input type="text" id="text-input" placeholder="Say something…">
+        <button id="mic-btn" aria-label="Talk" title="Talk">🎤</button>
+        <button id="speak-btn">Send</button>
+    </div>
+
+    <!-- Load PIXI.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    
+    <!-- Load Cubism 2 runtime (for older Live2D models) -->
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+    
+    <!-- Load Cubism 4 runtime (for newer Live2D models) -->
+    <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+    
+    <!-- Load pixi-live2d-display -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
+
+    <script>
+        // Configuration
+        const BACKEND_URL = 'https://waifubackend.pokymedia.xyz';
+        
+        // Path to your custom models folder (relative to this HTML file)
+        // Put your Neptunia models in: /models/neptunia-character-name/
+        const CUSTOM_MODELS_PATH = './models/';
+        
+        // Available Live2D characters
+        const CHARACTERS = [
+            // ========== YOUR CUSTOM MODELS ==========
+            {
+                id: 'compa',
+                name: 'Compa',
+                description: 'Hyperdimension Neptunia',
+                modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
+                scale: 0.30,
+                scaleMobile: 0.24,
+                position: { x: 0.02, y: 0.24 },
+                positionMobile: { x: 0.13, y: 0.23 },
+                isCustom: true,
+
+                // Per-character reaction config - moves into the active
+                // module-level variables on load/switch (see applyCharacterZoneConfig)
+                zoneConfig: {
+                    emotionToExpression: {
+                        neutral: 0, happy: 1, angry: 2, sad: 3, sympathetic: 4,
+                        surprised: 5, sleeping: 6, crying: 7, shocked: 8, embarrassed: 9
+                    },
+                    petZones: ['head', 'hair_back'],
+                    llmZones: ['chest', 'skirt'],
+                    petHoldThresholdMs: 2500,
+                    zoneLines: {
+                        face: { 1: null, 2: ["Hey, careful!", "Hehe, that tickles a little!"] },
+                        hand_L: { 2: ["That tickles!", "Hehe, careful there!"] },
+                        hand_R: { 2: ["That tickles!", "Hehe, careful there!"] },
+                        arm_L: { 2: ["Tee-hee, that tickles!"] },
+                        arm_R: { 2: ["Tee-hee, that tickles!"] },
+                        neck: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
+                        choker: { 1: ["O-oh, that's a bit ticklish..."], 2: ["H-hey, that's kind of embarrassing!"] },
+                        leg_L: {
+                            1: ["Um, that's a little forward...", "H-hey, that's kind of close...", "Oh! Um, please be careful there."],
+                            2: ["Hey! That startled me!", "Whoa, please don't do that!", "Hey, please don't!"]
+                        },
+                        leg_R: {
+                            1: ["Um, that's a little forward...", "H-hey, that's kind of close...", "Oh! Um, please be careful there."],
+                            2: ["Hey! That startled me!", "Whoa, please don't do that!", "Hey, please don't!"]
+                        }
+                    },
+                    zoneExpressions: {
+                        face: { 1: 'surprised', 2: 'happy' },
+                        hand_L: { 1: 'happy', 2: 'happy' },
+                        hand_R: { 1: 'happy', 2: 'happy' },
+                        arm_L: { 1: 'happy', 2: 'happy' },
+                        arm_R: { 1: 'happy', 2: 'happy' },
+                        neck: { 1: 'embarrassed', 2: 'embarrassed' },
+                        choker: { 1: 'embarrassed', 2: 'embarrassed' },
                         leg_L: { 1: 'embarrassed', 2: 'shocked' },
                         leg_R: { 1: 'embarrassed', 2: 'shocked' }
                     }

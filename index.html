@@ -1126,6 +1126,7 @@
         // Global state
         let app;
         let currentModel = null;
+        let currentModelTickerFn = null; // reference to the active app.ticker.add callback, so we can remove it before adding a new one on reload/switch instead of leaking it forever
         let pendingCharacterSwitch = null; // set when the backend flags a mid-conversation switch request
         let pendingSwitchReason = null; // the user's original message, for the new character's handoff greeting to reference
         let currentCharacter = null;
@@ -1511,6 +1512,16 @@
                 
                 // Remove previous model if exists
                 if (currentModel) {
+                    // Remove its ticker callback FIRST, before destroy() - otherwise
+                    // that closure keeps running every frame against a destroyed
+                    // model forever (this was the actual cause of accumulating
+                    // "setParameterValueById not available" warnings and visible
+                    // mouth jitter on characters reloaded/switched to repeatedly
+                    // in a session).
+                    if (currentModelTickerFn) {
+                        app.ticker.remove(currentModelTickerFn);
+                        currentModelTickerFn = null;
+                    }
                     app.stage.removeChild(currentModel);
                     currentModel.destroy();
                 }
@@ -1629,7 +1640,7 @@
             });
 
             // Animation loop for custom behaviors
-            app.ticker.add(() => {
+            currentModelTickerFn = () => {
                 if (!model) return;
 
                 // Update eye tracking (gaze follows cursor)
@@ -1640,7 +1651,8 @@
 
                 // Update breathing (Live2D models have this built-in, but we can enhance)
                 updateBreathing(model);
-            });
+            };
+            app.ticker.add(currentModelTickerFn);
         }
 
         function updateEyeTracking(model) {
@@ -1706,16 +1718,6 @@
 
                         // Normalize to 0-1 range
                         let rawVolume = average / 255.0;
-
-                        // TEMP DEBUG: comparing noise-floor behavior between characters
-                        // during pauses. Remove once we've confirmed/ruled out the
-                        // noise-gate theory. Throttled to ~5/sec so it's readable.
-                        if (!lipSyncState._lastDebugLog || Date.now() - lipSyncState._lastDebugLog > 200) {
-                            lipSyncState._lastDebugLog = Date.now();
-                            console.log(
-                                `🔊 [${currentCharacter?.id || '?'}] rawVolume=${rawVolume.toFixed(4)} gateOpen=${rawVolume >= 0.06}`
-                            );
-                        }
 
                         // Noise gate: sentence pauses aren't true digital silence,
                         // the analyser still reads a small noise-floor value there.

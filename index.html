@@ -1548,6 +1548,19 @@
                     autoInteract: false
                 });
 
+                // pixi-live2d-display auto-updates models on PIXI.Ticker.shared by
+                // default - a SEPARATE ticker/RAF loop from our own app.ticker, with
+                // no guaranteed ordering against it. That race is what caused a
+                // single-frame mouth pop during pauses: whichever loop happened to
+                // run last that frame is what actually rendered, so occasionally the
+                // model's own internal update (idle motion/physics/expression
+                // blending, whatever its own rest values are) would flash through
+                // right as our target settled near zero. Disabling autoUpdate and
+                // driving model.update() ourselves, in our own ticker, guarantees our
+                // lip sync override always applies AFTER the model's own update each
+                // frame - so it's always what actually renders.
+                model.autoUpdate = false;
+
                 currentModel = model;
                 currentCharacter = character;
                 applyCharacterZoneConfig(character);
@@ -1643,6 +1656,14 @@
             currentModelTickerFn = () => {
                 if (!model) return;
 
+                // Drive the model's own update first (idle motions, physics,
+                // expression blending) now that autoUpdate is disabled - our
+                // overrides below always run after, so they're guaranteed to be
+                // what actually renders this frame instead of racing it.
+                if (typeof model.update === 'function') {
+                    model.update(app.ticker.deltaMS);
+                }
+
                 // Update eye tracking (gaze follows cursor)
                 updateEyeTracking(model);
 
@@ -1719,34 +1740,12 @@
                         // Normalize to 0-1 range
                         let rawVolume = average / 255.0;
 
-                        // Noise gate: sentence pauses aren't true digital silence,
-                        // the analyser still reads a small noise-floor value there.
-                        // A flat +/-0.1 jitter applied on top of that used to push
-                        // quiet moments randomly open/closed, causing rapid mouth
-                        // flapping during pauses. Below the gate, snap shut instead.
-                        const noiseGate = 0.06;
-                        let volume;
-                        if (rawVolume < noiseGate) {
-                            volume = 0;
-                        } else {
-                            // Soft-knee ramp instead of a hard cutoff: at rawVolume ==
-                            // noiseGate this evaluates to sqrt(0) == 0, so there's no
-                            // discontinuity to snap across. The old version applied
-                            // Math.pow() straight to rawVolume, which meant crossing
-                            // the gate jumped instantly from 0 to sqrt(noiseGate) (~0.245)
-                            // in a single frame - since real speech hovers right around
-                            // the gate during pauses, that produced a visible one-frame
-                            // mouth pop-open-then-shut every time it flickered across
-                            // the boundary. Rescaling into 0-1 range above the gate
-                            // before curving removes that jump entirely.
-                            const above = (rawVolume - noiseGate) / (1 - noiseGate);
-                            volume = Math.pow(above, 0.5); // Square root for softer curve
+                        // Apply curve for more natural movement
+                        let volume = Math.pow(rawVolume, 0.5); // Square root for softer curve
 
-                            // Slight randomness for natural feel, scaled by volume so it
-                            // can't push a near-silent reading back above the gate
-                            volume += (Math.random() - 0.5) * 0.1 * volume;
-                            volume = Math.max(0, Math.min(1, volume));
-                        }
+                        // Slight randomness for natural feel, scaled by volume
+                        volume += (Math.random() - 0.5) * 0.1 * volume;
+                        volume = Math.max(0, Math.min(1, volume));
                         
                         // Fade out near the end
                         const fadeOutStart = 0.85;

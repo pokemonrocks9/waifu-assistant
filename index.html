@@ -1013,40 +1013,63 @@
                 name: 'Nepgear',
                 description: 'Hyperdimension Neptunia',
                 modelUrl: CUSTOM_MODELS_PATH + 'nepgear/0500_0501.model3.json',
-                // Desktop values still untested - adjust via the position
-                // debug panel once confirmed. Mobile confirmed below.
+                // Both desktop and mobile positions confirmed via testing
                 scale: 0.30,
                 scaleMobile: 0.24,
-                position: { x: 0.02, y: 0.24 },
+                position: { x: 0.00, y: 0.30 },
                 positionMobile: { x: 0, y: 0.23 },
                 isCustom: true,
 
-                // Minimal placeholder config - her model uses generic
-                // ArtMesh/Part numbering (no descriptive hit-area names like
-                // Compa's rig had), so touch zones need empirical calibration
-                // later (same tap-and-report process we used for Compa's
-                // expressions). Emotion mapping below is also a guess pending
-                // visual confirmation of what each exp_XX file actually shows -
-                // only exp_02 (PARAM_RAGE) is confirmed as angry so far.
+                // Confirmed via direct testing (2026) - both expression
+                // indices and touch zones. Her model has no named hit-areas
+                // (unlike Compa's rig), so zones are rectangular regions
+                // built from tap coordinates rather than real geometry -
+                // checked in priority order below so overlapping regions
+                // resolve to the more specific zone.
                 zoneConfig: {
                     emotionToExpression: {
-                        neutral: 0,   // exp_01 - confirmed neutral/reset (all params 0)
-                        angry: 1,     // exp_02 - confirmed PARAM_RAGE
-                        happy: 2,     // exp_03 - UNCONFIRMED GUESS
-                        sad: 3,       // exp_04 - UNCONFIRMED GUESS
-                        sympathetic: 4,  // exp_05 - UNCONFIRMED GUESS
-                        surprised: 5,    // exp_06 - UNCONFIRMED GUESS
-                        sleeping: 6,     // exp_07 - UNCONFIRMED GUESS
-                        crying: 7,       // exp_08 - UNCONFIRMED GUESS
-                        shocked: 8,      // exp_11 - UNCONFIRMED GUESS
-                        embarrassed: 9   // exp_12 - UNCONFIRMED GUESS
-                        // exp_13 and exp_18 also exist but aren't mapped yet
+                        neutral: 0,
+                        happy: 1,
+                        angry: 2,
+                        sad: 3,          // "concerned"
+                        sympathetic: 4,
+                        // 5 = "nervous (sweat)" - deliberately unmapped, doesn't
+                        // cleanly fit the 10-emotion vocabulary, available for
+                        // custom logic later if wanted
+                        sleeping: 6,
+                        crying: 7,
+                        surprised: 8,    // "starry eyed"
+                        shocked: 9,      // "O-O"
+                        embarrassed: 10  // ">-<"
+                        // 11 = explicitly flagged "never want to use" - skipped
                     },
-                    petZones: [],      // no hit-areas defined yet - petting won't register until calibrated
-                    llmZones: [],      // same - chest/skirt-equivalent zones not yet identified
+                    petZones: ['head'],
+                    llmZones: ['chest', 'skirt'],
                     petHoldThresholdMs: 2500,
-                    zoneLines: {},
-                    zoneExpressions: {}
+
+                    // Rectangular touch zones (relative 0-1 coordinates,
+                    // checked in this order - first match wins)
+                    rectZones: [
+                        { name: 'head', xMin: 0.28, xMax: 0.74, yMin: 0.00, yMax: 0.17 },
+                        { name: 'hand_R', xMin: 0.35, xMax: 0.52, yMin: 0.18, yMax: 0.30 }, // her right (screen-left)
+                        { name: 'hand_L', xMin: 0.66, xMax: 0.87, yMin: 0.42, yMax: 0.56 }, // her left (screen-right)
+                        { name: 'chest', xMin: 0.42, xMax: 0.65, yMin: 0.19, yMax: 0.36 },
+                        { name: 'legs', xMin: 0.26, xMax: 0.69, yMin: 0.48, yMax: 0.72 },
+                        { name: 'skirt', xMin: 0.23, xMax: 0.75, yMin: 0.37, yMax: 0.56 }
+                        // Nose/face poked out at x=0.48-0.51, y=0.15-0.16 - not
+                        // wired to a reaction yet, noted for later if wanted
+                    ],
+
+                    zoneLines: {
+                        hand_R: { 2: ["That tickles!", "Hehe, careful there!"] },
+                        hand_L: { 2: ["That tickles!", "Hehe, careful there!"] },
+                        legs: { 1: ["Um, that's a little forward..."], 2: ["Hey! That startled me!"] }
+                    },
+                    zoneExpressions: {
+                        hand_R: { 1: 'happy', 2: 'happy' },
+                        hand_L: { 1: 'happy', 2: 'happy' },
+                        legs: { 1: 'embarrassed', 2: 'shocked' }
+                    }
                 }
             },
             
@@ -1442,6 +1465,14 @@
                 // old listeners/panel would otherwise go stale
                 setupExpressionButtons();
                 setupTouchInteractions();
+
+                // Same staleness issue applied to the raw parameter panel -
+                // it only builds when the toggle opens, so just clear its
+                // content here; it'll rebuild fresh for the new model next
+                // time someone actually opens it, instead of showing the
+                // previous character's parameter sliders
+                const rawParamsList = document.getElementById('raw-params-list');
+                if (rawParamsList) rawParamsList.innerHTML = '';
 
             } catch (error) {
                 console.error('Error loading Live2D model:', error);
@@ -2462,24 +2493,35 @@
                 const point = event.data.global;
                 const hitAreas = currentModel.hitTest(point.x, point.y);
 
-                if (!hitAreas || hitAreas.length === 0) {
-                    // No HitAreas configured for this model yet (or the tap
-                    // missed all of them) - log relative position data instead,
-                    // so taps can be reported back and used to define rough
-                    // rectangular zones later without needing per-ArtMesh names
+                let zone = (hitAreas && hitAreas.length > 0) ? hitAreas[0] : null;
+
+                if (!zone) {
+                    // No named HitAreas on this model (or the tap missed all
+                    // of them) - fall back to rectangular zones built from
+                    // calibration taps, if this character has any defined
                     try {
                         const bounds = currentModel.getBounds();
-                        const relX = ((point.x - bounds.x) / bounds.width).toFixed(2);
-                        const relY = ((point.y - bounds.y) / bounds.height).toFixed(2);
-                        console.log(`No hit-area registered here. Relative position: x=${relX}, y=${relY} (0,0 = top-left of model, 1,1 = bottom-right)`);
+                        const relX = (point.x - bounds.x) / bounds.width;
+                        const relY = (point.y - bounds.y) / bounds.height;
+
+                        const rectZones = currentCharacter?.zoneConfig?.rectZones || [];
+                        const match = rectZones.find(z => relX >= z.xMin && relX <= z.xMax && relY >= z.yMin && relY <= z.yMax);
+
+                        if (match) {
+                            zone = match.name;
+                            console.log(`Rect zone matched: ${zone} (x=${relX.toFixed(2)}, y=${relY.toFixed(2)})`);
+                        } else {
+                            // Still nothing - log position for further calibration
+                            console.log(`No zone registered here. Relative position: x=${relX.toFixed(2)}, y=${relY.toFixed(2)} (0,0 = top-left of model, 1,1 = bottom-right)`);
+                            return;
+                        }
                     } catch (err) {
                         console.warn('Could not compute relative tap position:', err);
+                        return;
                     }
-                    return;
+                } else {
+                    console.log('Hit zone:', zone);
                 }
-
-                const zone = hitAreas[0];
-                console.log('Hit zone:', zone);
 
                 if (PET_ZONES.has(zone)) {
                     handlePetStart(zone);

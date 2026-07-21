@@ -1703,16 +1703,28 @@
                             sum += lipSyncState.audioDataArray[i];
                         }
                         const average = sum / (endBin - startBin);
-                        
-                        // Normalize to 0-1 range and apply curve for more natural movement
-                        let volume = average / 255.0;
-                        
-                        // Apply some easing to make it look more natural
-                        volume = Math.pow(volume, 0.5); // Square root for softer curve
-                        
-                        // Add slight randomness for more natural feel
-                        volume += (Math.random() - 0.5) * 0.1;
-                        volume = Math.max(0, Math.min(1, volume));
+
+                        // Normalize to 0-1 range
+                        let rawVolume = average / 255.0;
+
+                        // Noise gate: sentence pauses aren't true digital silence,
+                        // the analyser still reads a small noise-floor value there.
+                        // A flat +/-0.1 jitter applied on top of that used to push
+                        // quiet moments randomly open/closed, causing rapid mouth
+                        // flapping during pauses. Below the gate, snap shut instead.
+                        const noiseGate = 0.06;
+                        let volume;
+                        if (rawVolume < noiseGate) {
+                            volume = 0;
+                        } else {
+                            // Apply curve for more natural movement
+                            volume = Math.pow(rawVolume, 0.5); // Square root for softer curve
+
+                            // Slight randomness for natural feel, scaled by volume so it
+                            // can't push a near-silent reading back above the gate
+                            volume += (Math.random() - 0.5) * 0.1 * volume;
+                            volume = Math.max(0, Math.min(1, volume));
+                        }
                         
                         // Fade out near the end
                         const fadeOutStart = 0.85;

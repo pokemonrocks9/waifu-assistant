@@ -1,62 +1,62 @@
 {
   "Type": "Live2D Expression",
-  "FadeInTime": 1056965000,
-  "FadeOutTime": 1056965000,
+  "FadeInTime": 0.25,
+  "FadeOutTime": 0.25,
   "Parameters": [
     {
-      "ID": "PARAM_RAGE",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "PARAM_RAGE"
     },
     {
-      "ID": "Param8",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "Param8"
     },
     {
-      "ID": "Param9",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "Param9"
     },
     {
-      "ID": "Param12",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "Param12"
     },
     {
-      "ID": "Param14",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "Param14"
     },
     {
-      "ID": "Param18",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "Param18"
     },
     {
-      "ID": "Param19",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "Param19"
     },
     {
-      "ID": "Param20",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "Param20"
     },
     {
-      "ID": "Param21",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "Param21"
     },
     {
-      "ID": "Param22",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "Param22"
     },
     {
-      "ID": "Param23",
       "Value": 0,
-      "Blend": "Add"
+      "Blend": "Add",
+      "Id": "Param23"
     }
   ]
 }

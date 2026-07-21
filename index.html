@@ -1799,6 +1799,25 @@
                     // do nothing - let manual panel input stand
                 } else if (internalModel.coreModel && typeof internalModel.coreModel.setParameterValueById === 'function') {
                     internalModel.coreModel.setParameterValueById('ParamMouthOpenY', lipSyncState.currentMouthOpen);
+
+                    // Nepgear's idle motions (all 10 of them, across her in/loop/out
+                    // states) continuously animate PARAM_CHEEK the entire time,
+                    // speech or not - Compa's single simple idle motion doesn't touch
+                    // anything cheek/mouth-adjacent at all. During loud speech
+                    // ParamMouthOpenY visually dominates so this idle cheek movement
+                    // isn't noticeable, but the instant the mouth closes at a pause,
+                    // whatever the idle loop happens to be doing to the cheek that
+                    // moment becomes visible - looking like a ghosted sideways mouth
+                    // pop with no relation to actual speech content. Hold it at
+                    // neutral ourselves while she's actively speaking so the idle
+                    // loop can't fight for visual dominance mid-utterance.
+                    if (lipSyncState.isSpeaking) {
+                        try {
+                            internalModel.coreModel.setParameterValueById('PARAM_CHEEK', 0);
+                        } catch (e) {
+                            // Param may not exist on other characters' rigs - fine to no-op
+                        }
+                    }
                     
                     if (lipSyncState.isSpeaking && !lipSyncState.debugLogged) {
                         console.log('💬 Lip sync active via setParameterValueById:', lipSyncState.currentMouthOpen.toFixed(3));
@@ -2579,6 +2598,16 @@
             const now = Date.now();
             if (now - lastTouchTime < TOUCH_COOLDOWN_MS) return;
             lastTouchTime = now;
+
+            // Cancel any leftover reset timer from a previous poke - otherwise it
+            // can fire mid-wait on THIS poke (especially LLM-routed zones, which
+            // take longer than the 2s reset delay) and snap her back to neutral
+            // before the response/audio even arrives, stomping the expression we're
+            // about to set below.
+            if (pendingExpressionReset) {
+                clearTimeout(pendingExpressionReset);
+                pendingExpressionReset = null;
+            }
 
             const level = getEscalationLevel(zone);
             console.log(`Poked: ${zone} (escalation level ${level})`);

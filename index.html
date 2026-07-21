@@ -766,6 +766,10 @@
         }
 
         .mt-2 { margin-top: 8px; }
+        .flex-row { display: flex; flex-direction: row; align-items: center; }
+        .flex-col { display: flex; flex-direction: column; }
+        .flex-wrap { flex-wrap: wrap; }
+        .gap-2 { gap: 8px; }
         .mb-2 { margin-bottom: 8px; }
 
         .param-value {
@@ -888,22 +892,17 @@
                 </div>
             </div>
 
-            <!-- Emotion/expression test buttons -->
+            <!-- Emotion/expression test buttons - populated dynamically based
+                 on however many expressions the currently loaded model
+                 actually has, since different characters' rigs have
+                 different counts. Labels are editable and saved per-character
+                 so you can name them for reference as you figure out what
+                 each one is. -->
             <div class="settings-section">
                 <h3>Emotions (testing)</h3>
-                <p class="form-hint mb-2">Click each to see what it looks like, then let me know which is which.</p>
-                <div id="expression-buttons" class="flex-row flex-wrap gap-2">
-                    <button class="btn secondary" data-expression="0">Neutral</button>
-                    <button class="btn secondary" data-expression="1">Happy (eyes closed smile)</button>
-                    <button class="btn secondary" data-expression="2">Angry</button>
-                    <button class="btn secondary" data-expression="3">Sad</button>
-                    <button class="btn secondary" data-expression="4">Sympathetic</button>
-                    <button class="btn secondary" data-expression="5">Surprised (subtle)</button>
-                    <button class="btn secondary" data-expression="6">Calm / Sleepy</button>
-                    <button class="btn secondary" data-expression="7">Crying</button>
-                    <button class="btn secondary" data-expression="8">Shocked (O-O)</button>
-                    <button class="btn secondary" data-expression="9">Embarrassed (&gt;-&lt;)</button>
-                    <button class="btn ghost" data-expression="">Reset to default</button>
+                <p class="form-hint mb-2">Click to test, type a name once you know what it is - saved for this character.</p>
+                <div id="expression-buttons" class="flex-col gap-2">
+                    <p class="form-hint" style="opacity: 0.6;">Load a character to see their expressions here.</p>
                 </div>
             </div>
 
@@ -1257,71 +1256,117 @@
             }
         });
 
-        function setupExpressionButtons() {
-            const buttons = document.querySelectorAll('#expression-buttons button');
-            buttons.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const expressionName = btn.dataset.expression;
+        function getExpressionLabelKey(characterId, index) {
+            return `expr_label_${characterId}_${index}`;
+        }
 
-                    if (!currentModel) {
-                        console.warn('No model loaded yet - cannot set expression');
-                        return;
-                    }
+        // Rebuilds the expression testing panel from scratch based on
+        // whatever the CURRENTLY LOADED model actually has - different
+        // characters' rigs have different expression counts, so this can't
+        // be a fixed list. Labels are editable inline and persist per
+        // character+index in localStorage, so once you figure out what an
+        // expression actually is, it stays labeled for next time.
+        function renderExpressionTestButtons() {
+            const container = document.getElementById('expression-buttons');
+            container.innerHTML = '';
 
-                    buttons.forEach(b => b.classList.remove('active'));
+            if (!currentModel || !currentCharacter) {
+                container.innerHTML = '<p class="form-hint" style="opacity: 0.6;">Load a character to see their expressions here.</p>';
+                return;
+            }
 
-                    if (expressionName) {
-                        try {
-                            const idx = parseInt(expressionName, 10);
-                            currentModel.expression(idx);
-                            btn.classList.add('active');
-                            console.log(`Expression set: ${expressionName}`);
+            const definitions = currentModel.internalModel?.motionManager?.expressionManager?.definitions;
+            const count = definitions ? definitions.length : 0;
 
-                            // Debug: check if the parameter values actually landed on the model
-                            setTimeout(() => {
-                                try {
-                                    const core = currentModel.internalModel.coreModel;
-                                    const paramIds = ['laughter', 'anger_', 'sad_', 'surprise', 'eye_close', 'crying_', 'pokan_', 'eyeclose_deform'];
-                                    const values = {};
-                                    paramIds.forEach(id => {
-                                        try {
-                                            values[id] = core.getParameterValueById(id);
-                                        } catch (e) {
-                                            values[id] = 'not found';
-                                        }
-                                    });
-                                    console.log('Current parameter values:', values);
+            if (count === 0) {
+                container.innerHTML = '<p class="form-hint" style="opacity: 0.6;">This model has no expressions defined.</p>';
+                return;
+            }
 
-                                    // Log the FULL real parameter list to check if these are actually valid parameters at all
-                                    try {
-                                        // Try common Cubism4 core API shapes
-                                        if (core._model && core._model.parameters && core._model.parameters.ids) {
-                                            console.log('Full parameter list (via _model.parameters.ids):', core._model.parameters.ids);
-                                        } else if (typeof core.getParameterIds === 'function') {
-                                            console.log('Full parameter list (via getParameterIds):', core.getParameterIds());
-                                        } else {
-                                            console.log('Could not find parameter list method. Available core methods:', Object.getOwnPropertyNames(Object.getPrototypeOf(core)));
-                                        }
-                                    } catch (e2) {
-                                        console.warn('Parameter list enumeration failed:', e2);
-                                    }
-                                } catch (e) {
-                                    console.warn('Could not read parameter values for debug:', e);
-                                }
-                            }, 100);
-                        } catch (err) {
-                            console.error(`Failed to set expression "${expressionName}":`, err);
-                        }
-                    } else {
-                        // Reset to default - resetting expression clears any active override
-                        try {
-                            currentModel.expression();
-                        } catch (err) {
-                            console.error('Failed to reset expression:', err);
-                        }
+            const characterId = currentCharacter.id;
+
+            for (let i = 0; i < count; i++) {
+                const savedLabel = localStorage.getItem(getExpressionLabelKey(characterId, i)) || '';
+
+                const row = document.createElement('div');
+                row.className = 'flex-row gap-2';
+                row.style.marginBottom = '6px';
+
+                const testBtn = document.createElement('button');
+                testBtn.className = 'btn secondary';
+                testBtn.textContent = `Test ${i}`;
+                testBtn.style.flexShrink = '0';
+                testBtn.addEventListener('click', () => {
+                    try {
+                        currentModel.expression(i);
+                        console.log(`Expression set: index ${i}${savedLabel ? ` (${savedLabel})` : ''}`);
+                    } catch (err) {
+                        console.error(`Failed to set expression index ${i}:`, err);
                     }
                 });
+
+                const labelInput = document.createElement('input');
+                labelInput.type = 'text';
+                labelInput.placeholder = `What is expression ${i}?`;
+                labelInput.value = savedLabel;
+                labelInput.style.cssText = 'flex: 1; background: var(--panel); border: 1px solid var(--hairline); border-radius: 6px; padding: 6px 10px; color: var(--text); font-family: var(--font-display); font-size: 12px;';
+                labelInput.addEventListener('change', () => {
+                    localStorage.setItem(getExpressionLabelKey(characterId, i), labelInput.value.trim());
+                });
+
+                row.appendChild(testBtn);
+                row.appendChild(labelInput);
+                container.appendChild(row);
+            }
+
+            const resetRow = document.createElement('button');
+            resetRow.className = 'btn ghost';
+            resetRow.textContent = 'Reset to default';
+            resetRow.style.width = '100%';
+            resetRow.style.marginTop = '4px';
+            resetRow.addEventListener('click', () => {
+                try {
+                    currentModel.expression();
+                } catch (err) {
+                    console.error('Failed to reset expression:', err);
+                }
             });
+            container.appendChild(resetRow);
+
+            const copyConfigBtn = document.createElement('button');
+            copyConfigBtn.className = 'btn secondary';
+            copyConfigBtn.textContent = 'Copy as config (for pasting into CHARACTERS)';
+            copyConfigBtn.style.width = '100%';
+            copyConfigBtn.style.marginTop = '4px';
+            copyConfigBtn.addEventListener('click', () => {
+                const lines = [];
+                for (let i = 0; i < count; i++) {
+                    const label = localStorage.getItem(getExpressionLabelKey(characterId, i));
+                    if (label) {
+                        const key = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+                        if (key) {
+                            lines.push(`    ${key}: ${i}, // "${label}"`);
+                        }
+                    }
+                }
+                const snippet = lines.length
+                    ? `emotionToExpression: {\n${lines.join('\n')}\n}`
+                    : '// No labels entered yet - type names in the fields above first';
+
+                navigator.clipboard.writeText(snippet).then(() => {
+                    copyConfigBtn.textContent = 'Copied!';
+                    setTimeout(() => { copyConfigBtn.textContent = 'Copy as config (for pasting into CHARACTERS)'; }, 1500);
+                }).catch(() => {
+                    console.log('Config snippet (clipboard write failed, here it is):\n' + snippet);
+                });
+            });
+            container.appendChild(copyConfigBtn);
+        }
+
+        // Kept as a thin wrapper so existing call sites (loadLive2DModel,
+        // switchCharacter) don't need to change - it just triggers a rebuild
+        function setupExpressionButtons() {
+            renderExpressionTestButtons();
         }
 
         // Load Live2D model
@@ -1389,6 +1434,14 @@
                 console.log('Live2D model loaded successfully!');
                 console.log('Available motions:', model.internalModel.motionManager.definitions);
                 console.log('Available expressions:', Object.keys(model.internalModel.motionManager.expressionManager?.definitions || {}));
+
+                // Rebuild the expression test panel and re-wire touch
+                // interactions for THIS model instance - needs to happen on
+                // every load (not just the first), since switching
+                // characters creates a new model instance each time and the
+                // old listeners/panel would otherwise go stale
+                setupExpressionButtons();
+                setupTouchInteractions();
 
             } catch (error) {
                 console.error('Error loading Live2D model:', error);
@@ -2408,7 +2461,22 @@
                 if (interactionsLocked) return;
                 const point = event.data.global;
                 const hitAreas = currentModel.hitTest(point.x, point.y);
-                if (!hitAreas || hitAreas.length === 0) return;
+
+                if (!hitAreas || hitAreas.length === 0) {
+                    // No HitAreas configured for this model yet (or the tap
+                    // missed all of them) - log relative position data instead,
+                    // so taps can be reported back and used to define rough
+                    // rectangular zones later without needing per-ArtMesh names
+                    try {
+                        const bounds = currentModel.getBounds();
+                        const relX = ((point.x - bounds.x) / bounds.width).toFixed(2);
+                        const relY = ((point.y - bounds.y) / bounds.height).toFixed(2);
+                        console.log(`No hit-area registered here. Relative position: x=${relX}, y=${relY} (0,0 = top-left of model, 1,1 = bottom-right)`);
+                    } catch (err) {
+                        console.warn('Could not compute relative tap position:', err);
+                    }
+                    return;
+                }
 
                 const zone = hitAreas[0];
                 console.log('Hit zone:', zone);
@@ -2763,9 +2831,6 @@
 
             // Load whichever character that turned out to be
             await loadLive2DModel(startupCharacter);
-            setupExpressionButtons();
-            setupTouchInteractions();
-
             // Fix the sidebar highlight to match - initCharacterSelector()
             // defaulted to highlighting the first entry before we knew which
             // character was actually active, so correct that now

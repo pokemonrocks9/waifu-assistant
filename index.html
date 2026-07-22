@@ -1801,7 +1801,15 @@
                         // the mic-restart/switch-handoff timing on its own delay.)
                         if (!lipSyncState._neutralResetDone) {
                             lipSyncState._neutralResetDone = true;
-                            triggerEmotion('neutral');
+                            // Only actually reset if nothing else has changed the
+                            // expression since THIS speech segment started - otherwise
+                            // this is a stale completion event from an old segment
+                            // firing after a newer, unrelated interaction (e.g. a
+                            // rapid second poke) already set a fresh expression, and
+                            // resetting now would incorrectly stomp that fresh one.
+                            if (lastExpressionChangeTime <= lipSyncState.speakingStartTime) {
+                                triggerEmotion('neutral');
+                            }
                         }
                     }
                 }
@@ -2455,6 +2463,8 @@
             }
         }
 
+        let lastExpressionChangeTime = 0;
+
         function triggerEmotion(emotion) {
             if (!currentModel) return;
             const idx = EMOTION_TO_EXPRESSION[emotion];
@@ -2464,6 +2474,7 @@
             }
             try {
                 currentModel.expression(idx);
+                lastExpressionChangeTime = Date.now();
                 console.log(`Emotion triggered: ${emotion} (expression ${idx})`);
             } catch (err) {
                 console.error(`Failed to trigger emotion "${emotion}":`, err);

@@ -2856,8 +2856,16 @@
                 // expression doesn't stay frozen until the next message.
                 // Same timing gates the mic auto-restart (if enabled) - both
                 // happen together once she's genuinely done.
+                const onendedFiredAt = Date.now();
                 setTimeout(() => {
-                    triggerEmotion('neutral');
+                    // Only reset if nothing has changed the expression since THIS
+                    // audio actually ended - otherwise this is a stale timer from
+                    // this segment finishing, firing on top of a brand new
+                    // interaction (e.g. another poke) that happened to land within
+                    // the same 1-second window and already set its own expression.
+                    if (lastExpressionChangeTime <= onendedFiredAt) {
+                        triggerEmotion('neutral');
+                    }
                     if (micAlwaysOn) {
                         startListening();
                     }

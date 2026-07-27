@@ -113,6 +113,16 @@
             z-index: 2;
         }
 
+        #mmd-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 2;
+        }
+
         #loading {
             position: absolute;
             top: 50%;
@@ -784,6 +794,7 @@
 <body>
     <div id="canvas-container">
         <canvas id="live2d-canvas"></canvas>
+        <canvas id="mmd-canvas" style="display: none;"></canvas>
     </div>
 
     <div id="loading">
@@ -985,6 +996,21 @@
     <!-- Load pixi-live2d-display -->
     <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
 
+    <!-- MMD (PMX/VMD) support, for the alternate 3D render mode.
+         Pinned to three.js r0.128.0 - the last version with the legacy
+         non-module examples/js build MMDLoader depends on. Loaded
+         unconditionally for now (even if MMD mode is never used) for
+         simplicity - worth lazy-loading later once MMD mode is stable,
+         since this adds real payload weight (~1MB+) to every load. -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/mmdparser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/animation/CCDIKSolver.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/animation/MMDPhysics.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/MMDLoader.js"></script>
+    <!-- ammo.js - WASM physics engine MMDPhysics needs for skirt/hair jiggle.
+         Sets window.Ammo as an async-init factory function. -->
+    <script src="https://cdn.jsdelivr.net/npm/ammo.js@0.0.10/ammo.js"></script>
+
     <script>
         // Configuration
         const BACKEND_URL = 'https://waifubackend.pokymedia.xyz';
@@ -993,13 +1019,19 @@
         // Put your Neptunia models in: /models/neptunia-character-name/
         const CUSTOM_MODELS_PATH = './models/';
         
-        // Available Live2D characters
+        // Available characters. Each entry supports a `renderMode` field:
+        // 'live2d' (default, existing behavior - modelUrl points to a .model3.json)
+        // 'mmd' (new - modelUrl points to a .pmx file instead; optionally
+        //   `mmdMotionUrl` for a .vmd idle animation, and `mmdPhysics: true/false`
+        //   to enable ammo.js-driven skirt/hair physics for that character).
+        // Existing characters below default to 'live2d' and are unaffected.
         const CHARACTERS = [
             // ========== YOUR CUSTOM MODELS ==========
             {
                 id: 'compa',
                 name: 'Compa',
                 description: 'Hyperdimension Neptunia',
+                renderMode: 'live2d',
                 modelUrl: CUSTOM_MODELS_PATH + 'compa/1400_1401.model3.json',
                 scale: 0.30,
                 scaleMobile: 0.24,
@@ -1052,6 +1084,7 @@
                 id: 'nepgear',
                 name: 'Nepgear',
                 description: 'Hyperdimension Neptunia',
+                renderMode: 'live2d',
                 modelUrl: CUSTOM_MODELS_PATH + 'nepgear/0500_0501.model3.json',
                 // Both desktop and mobile positions confirmed via testing
                 scale: 0.30,
@@ -1134,12 +1167,88 @@
                 id: 'neptune',
                 name: 'Neptune',
                 description: 'Neptunia - Purple Heart',
+                renderMode: 'live2d',
                 modelUrl: CUSTOM_MODELS_PATH + 'neptune/neptune.model3.json',
                 scale: 0.1,
                 position: { x: 0, y: 0.1 },
                 isCustom: true
-            },
+            }
+            // Example MMD character entry, for reference (kept as a template
+            // alongside the real one below):
+            // {
+            //     id: 'someholomem',
+            //     name: 'Some HoloLive Member',
+            //     description: 'MMD model',
+            //     renderMode: 'mmd',
+            //     modelUrl: CUSTOM_MODELS_PATH + 'someholomem/model.pmx',
+            //     mmdMotionUrl: CUSTOM_MODELS_PATH + 'someholomem/idle.vmd', // optional
+            //     mmdPhysics: true, // ammo.js skirt/hair physics - heavier on CPU
+            //     scale: 1.0,
+            //     position: { x: 0, y: -10 }, // MMD uses real-world-ish 3D units, not 0-1 normalized like Live2D
+            //     isCustom: true
+            // },
             */
+            {
+                id: 'mococo',
+                name: 'Mococo',
+                description: 'hololive - MMD test',
+                renderMode: 'mmd',
+                modelUrl: CUSTOM_MODELS_PATH + 'mococo/MococoAbyssgard.pmx',
+                mmdPhysics: false, // start with physics OFF to confirm the model loads/renders correctly first - flip on once that's confirmed
+                scale: 1.0,
+                position: { x: 0, y: 0, z: 0 },
+                // Bust-level framing, based on this model's actual bone
+                // positions (head bone at y=17.08, chest bones at y=14.81) -
+                // aims for a similar "upper body" crop to how Compa/Nepgear
+                // are framed. Will need visual tuning once actually rendered -
+                // MMD camera facing direction/distance is a guess from
+                // geometry alone, not confirmed against real output.
+                mmdCameraPosition: { x: 0, y: 15, z: 28 },
+                mmdCameraTarget: { x: 0, y: 14.5, z: 0 },
+                // 3D bounding-box touch zones, derived from this model's real
+                // bone positions (see conversation notes) with padding for
+                // actual mesh volume around each bone point. First-match-wins,
+                // same convention as Live2D's rectZones. Coordinates are in
+                // the model's LOCAL space (matches raw bone positions, not
+                // affected by the `position` offset above).
+                // NOTE: 左(hidari/"left") bones sit at +X, 右(migi/"right") at
+                // -X in this model's own coordinate convention - hand_L below
+                // corresponds to her own left hand, which may appear on
+                // screen-right depending on which way the model ends up
+                // facing the camera. Verify visually and swap if mirrored.
+                mmdTouchZones: [
+                    // Head/hair region (頭 bone y=17.08, hair extends to ~19.9)
+                    { name: 'head', xMin: -2.5, xMax: 2.5, yMin: 15.5, yMax: 20.5, zMin: -2.5, zMax: 2.5 },
+                    // Chest (左胸/右胸 bones at y=14.81, z=0.89)
+                    { name: 'chest', xMin: -2.5, xMax: 2.5, yMin: 13.5, yMax: 16.0, zMin: -0.5, zMax: 2.5 },
+                    // Coat/torso-front region, standing in for "skirt" (this
+                    // model wears a coat, not a skirt - named 'skirt' anyway
+                    // so it routes through the same backend LLM_REACTION_ZONES
+                    // boundary-reaction path as chest)
+                    { name: 'skirt', xMin: -2.5, xMax: 2.5, yMin: 12.5, yMax: 14.5, zMin: -2.0, zMax: 2.0 },
+                    // Thighs/legs (左足/右足 bones at y=11.47, down to knee ~6.44)
+                    { name: 'legs', xMin: -2.5, xMax: 2.5, yMin: 8.0, yMax: 12.3, zMin: -1.0, zMax: 2.5 },
+                    // Hands/wrists (左手首/右手首 bones at x=±5.11, y=11.89)
+                    { name: 'hand_L', xMin: 3.5, xMax: 7.0, yMin: 10.0, yMax: 14.0, zMin: -1.5, zMax: 1.5 },
+                    { name: 'hand_R', xMin: -7.0, xMax: -3.5, yMin: 10.0, yMax: 14.0, zMin: -1.5, zMax: 1.5 }
+                ],
+                zoneConfig: {
+                    zoneLines: {
+                        hand_L: { 2: ["That tickles!", "Hehe, careful there!"] },
+                        hand_R: { 2: ["That tickles!", "Hehe, careful there!"] },
+                        legs: {
+                            1: ["Um, that's a little forward...", "H-hey, that's kind of close...", "Oh! Um, please be careful there."],
+                            2: ["Hey! That startled me!", "Whoa, please don't do that!", "Hey, please don't!"]
+                        }
+                    },
+                    zoneExpressions: {
+                        hand_L: { 1: 'happy', 2: 'happy' },
+                        hand_R: { 1: 'happy', 2: 'happy' },
+                        legs: { 1: 'embarrassed', 2: 'embarrassed' }
+                    }
+                },
+                isCustom: true
+            }
         ];
 
         // Global state
@@ -1520,6 +1629,347 @@
         }
 
         // Load Live2D model
+        // ============================================================
+        // MMD (PMX/VMD) render mode - alternate to Live2D, using three.js
+        // ============================================================
+        // Parallel implementation to the Live2D pipeline above. Shares the
+        // SAME lipSyncState/audio-analyser pipeline (see setupAudioAnalysis)
+        // but drives morph targets instead of Cubism parameters. Nothing here
+        // is wired into the Live2D functions - they run independently and
+        // only one is ever visible/active at a time via loadCharacterModel.
+        //
+        // STATUS: scaffolded but UNTESTED end-to-end (no PMX model available
+        // to verify against from this environment) - expect to need real
+        // debugging once you point it at an actual model. Build it up in
+        // stages: confirm a model actually appears and is positioned/scaled
+        // correctly first, before trusting lip sync/touch/physics on top.
+
+        let mmdRenderer = null;
+        let mmdScene = null;
+        let mmdCamera = null;
+        let mmdClock = null;
+        let mmdCurrentMesh = null;      // the loaded SkinnedMesh
+        let mmdCurrentHelper = null;    // MMDAnimationHelper instance (drives physics/morphs/IK)
+        let mmdAnimationFrameId = null;
+        let mmdRaycaster = null;
+        let mmdAmmoReady = null;        // Promise, resolves once Ammo() WASM init completes
+
+        // MMD morph target names for mouth shapes vary by model author, but
+        // these Japanese vowel names are the de-facto standard convention
+        // (used by most official/fan MMD models, including HoloLive
+        // releases). We drive whichever of these actually exists on the
+        // loaded model - "あ" (a, wide open) is the primary one for lip sync,
+        // matching how ParamMouthOpenY is driven in the Live2D pipeline.
+        const MMD_MOUTH_MORPH_CANDIDATES = ['あ', 'a', 'A'];
+
+        function initMMDScene() {
+            if (mmdRenderer) return; // already initialized, reuse
+
+            const canvas = document.getElementById('mmd-canvas');
+            const width = canvas.clientWidth || window.innerWidth;
+            const height = canvas.clientHeight || window.innerHeight;
+
+            mmdRenderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+            mmdRenderer.setPixelRatio(window.devicePixelRatio || 1);
+            mmdRenderer.setSize(width, height);
+            mmdRenderer.setClearColor(0x000000, 0); // transparent background, matches Live2D canvas
+
+            mmdScene = new THREE.Scene();
+
+            mmdCamera = new THREE.PerspectiveCamera(30, width / height, 1, 2000);
+            mmdCamera.position.set(0, 14, 30); // rough default, overridden per-character below
+            mmdCamera.lookAt(0, 14, 0); // was missing entirely - camera would otherwise default to looking at world origin (floor level), not framing the character
+
+            // Basic lighting - MMD models generally expect at least one
+            // directional light to read correctly, unlike Live2D's flat 2D art
+            const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+            mmdScene.add(ambient);
+            const directional = new THREE.DirectionalLight(0xffffff, 0.6);
+            directional.position.set(0, 1, 1).normalize();
+            mmdScene.add(directional);
+
+            mmdClock = new THREE.Clock();
+            mmdRaycaster = new THREE.Raycaster();
+
+            window.addEventListener('resize', () => {
+                if (!mmdRenderer || !mmdCamera) return;
+                const w = canvas.clientWidth || window.innerWidth;
+                const h = canvas.clientHeight || window.innerHeight;
+                mmdRenderer.setSize(w, h);
+                mmdCamera.aspect = w / h;
+                mmdCamera.updateProjectionMatrix();
+            });
+
+            console.log('✅ MMD three.js scene initialized');
+        }
+
+        // ammo.js exposes a global Ammo() factory that returns a Promise
+        // resolving once the WASM module is ready - MMDPhysics needs this
+        // done before it can be constructed. Call/await this once, lazily,
+        // the first time a character with mmdPhysics:true loads.
+        function ensureAmmoReady() {
+            if (mmdAmmoReady) return mmdAmmoReady;
+            if (typeof Ammo !== 'function') {
+                console.error('❌ ammo.js not loaded - physics will be skipped');
+                mmdAmmoReady = Promise.resolve(false);
+                return mmdAmmoReady;
+            }
+            mmdAmmoReady = Ammo().then(() => {
+                window.Ammo = Ammo; // MMDPhysics/three.js expects Ammo globally post-init
+                console.log('✅ ammo.js WASM ready');
+                return true;
+            }).catch(err => {
+                console.error('❌ ammo.js init failed:', err);
+                return false;
+            });
+            return mmdAmmoReady;
+        }
+
+        async function loadMMDModel(character) {
+            const loadingDiv = document.getElementById('loading');
+            const errorDiv = document.getElementById('error');
+            loadingDiv.style.display = 'block';
+            errorDiv.style.display = 'none';
+
+            try {
+                console.log(`Loading MMD model: ${character.name}`);
+                console.log(`PMX URL: ${character.modelUrl}`);
+
+                initMMDScene();
+
+                // Remove previous MMD mesh/helper if switching between two MMD
+                // characters directly (same cleanup-before-load pattern as
+                // loadLive2DModel's currentModel.destroy())
+                if (mmdCurrentMesh) {
+                    mmdScene.remove(mmdCurrentMesh);
+                    mmdCurrentMesh.geometry?.dispose();
+                    mmdCurrentMesh = null;
+                }
+                mmdCurrentHelper = null;
+
+                const wantsPhysics = !!character.mmdPhysics;
+                if (wantsPhysics) {
+                    await ensureAmmoReady();
+                }
+
+                const loader = new THREE.MMDLoader();
+                const helper = new THREE.MMDAnimationHelper({
+                    afterglow: 2.0,
+                    resetPhysicsOnLoop: true
+                });
+
+                const mesh = await new Promise((resolve, reject) => {
+                    if (character.mmdMotionUrl) {
+                        loader.loadWithAnimation(
+                            character.modelUrl,
+                            character.mmdMotionUrl,
+                            (result) => resolve(result.mesh),
+                            undefined,
+                            (err) => reject(err)
+                        );
+                    } else {
+                        loader.load(
+                            character.modelUrl,
+                            (result) => resolve(result),
+                            undefined,
+                            (err) => reject(err)
+                        );
+                    }
+                });
+
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+
+                const scale = character.scale || 1.0;
+                mesh.scale.set(scale, scale, scale);
+                if (character.position) {
+                    mesh.position.set(character.position.x || 0, character.position.y || 0, character.position.z || 0);
+                }
+
+                helper.add(mesh, {
+                    physics: wantsPhysics
+                });
+
+                mmdScene.add(mesh);
+                mmdCurrentMesh = mesh;
+                mmdCurrentHelper = helper;
+
+                // Per-character camera framing override - the generic default
+                // from initMMDScene is a rough guess and won't suit every
+                // model's proportions/pose.
+                if (character.mmdCameraPosition) {
+                    mmdCamera.position.set(
+                        character.mmdCameraPosition.x,
+                        character.mmdCameraPosition.y,
+                        character.mmdCameraPosition.z
+                    );
+                }
+                const camTarget = character.mmdCameraTarget || { x: 0, y: 14, z: 0 };
+                mmdCamera.lookAt(camTarget.x, camTarget.y, camTarget.z);
+
+                // Log which mouth morph name actually exists on this model, so
+                // it's obvious at load time whether lip sync will have
+                // anything to drive, rather than silently doing nothing later
+                const morphDict = mesh.morphTargetDictionary || {};
+                const foundMouthMorph = MMD_MOUTH_MORPH_CANDIDATES.find(name => name in morphDict);
+                if (foundMouthMorph) {
+                    console.log(`✅ MMD mouth morph found: "${foundMouthMorph}" - lip sync will drive this`);
+                } else {
+                    console.warn(`⚠️ No recognized mouth morph found on this model (looked for: ${MMD_MOUTH_MORPH_CANDIDATES.join(', ')}). Lip sync will have no visible effect until this is mapped. Available morphs:`, Object.keys(morphDict));
+                }
+
+                mesh.userData.mouthMorphName = foundMouthMorph || null;
+
+                startMMDRenderLoop();
+
+                loadingDiv.style.display = 'none';
+                console.log(`✅ MMD model loaded successfully: ${character.name}`);
+            } catch (err) {
+                console.error('Failed to load MMD model:', err);
+                loadingDiv.style.display = 'none';
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = `Failed to load model: ${character.name} - ${err.message || err}. Check console for details.`;
+            }
+        }
+
+        function startMMDRenderLoop() {
+            if (mmdAnimationFrameId) cancelAnimationFrame(mmdAnimationFrameId);
+
+            function renderFrame() {
+                mmdAnimationFrameId = requestAnimationFrame(renderFrame);
+                const delta = mmdClock.getDelta();
+
+                if (mmdCurrentHelper) {
+                    mmdCurrentHelper.update(delta);
+                }
+
+                updateMMDLipSync();
+
+                if (mmdRenderer && mmdScene && mmdCamera) {
+                    mmdRenderer.render(mmdScene, mmdCamera);
+                }
+            }
+            renderFrame();
+        }
+
+        function stopMMDRenderLoop() {
+            if (mmdAnimationFrameId) {
+                cancelAnimationFrame(mmdAnimationFrameId);
+                mmdAnimationFrameId = null;
+            }
+        }
+
+        // Drives the mesh's mouth morph target from the SAME lipSyncState
+        // object the Live2D pipeline already maintains (currentMouthOpen,
+        // updated every frame in updateLipSync via the shared audio
+        // analyser) - reusing that instead of duplicating the audio analysis
+        // logic. Only actually touches the mesh if a mouth morph was found
+        // at load time.
+        function updateMMDLipSync() {
+            if (!mmdCurrentMesh) return;
+            const morphName = mmdCurrentMesh.userData?.mouthMorphName;
+            if (!morphName) return;
+
+            const dict = mmdCurrentMesh.morphTargetDictionary;
+            const influences = mmdCurrentMesh.morphTargetInfluences;
+            if (!dict || !influences) return;
+
+            const idx = dict[morphName];
+            if (idx === undefined) return;
+
+            influences[idx] = lipSyncState.currentMouthOpen;
+        }
+
+        // Touch-zone handling for MMD, via raycasting against the mesh's
+        // actual 3D geometry, then matching the hit point against a set of
+        // 3D bounding-box zones (the 3D equivalent of Live2D's rectZones) -
+        // defined per-character as `mmdTouchZones` in local model space,
+        // derived from that model's actual bone positions. First matching
+        // box wins, same convention as rectZones. Once a zone name is
+        // resolved, this hands off to the EXACT SAME handlePoke/petting
+        // pipeline Live2D uses - no duplicated reaction/backend logic.
+        function resolveMMDZone(character, point) {
+            const zones = character.mmdTouchZones;
+            if (!zones) return null;
+            for (const z of zones) {
+                if (point.x >= z.xMin && point.x <= z.xMax &&
+                    point.y >= z.yMin && point.y <= z.yMax &&
+                    point.z >= z.zMin && point.z <= z.zMax) {
+                    return z.name;
+                }
+            }
+            return null;
+        }
+
+        function setupMMDTouchHandling(character) {
+            const canvas = document.getElementById('mmd-canvas');
+
+            // Petting (head zone, held down) needs pointerdown+pointerup
+            // tracked separately, same distinction handlePetStart/handlePoke
+            // already draw for Live2D - reuse that split here too.
+            canvas.onpointerdown = (e) => {
+                if (!mmdCurrentMesh || !mmdCamera) return;
+
+                const rect = canvas.getBoundingClientRect();
+                const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+                mmdRaycaster.setFromCamera({ x, y }, mmdCamera);
+                const intersects = mmdRaycaster.intersectObject(mmdCurrentMesh, true);
+
+                if (intersects.length === 0) {
+                    console.log('MMD raycast: no hit');
+                    return;
+                }
+
+                // Hit point comes back in world space - convert to the mesh's
+                // LOCAL space before zone-matching, since mmdTouchZones are
+                // authored against the model's own bone coordinates (which
+                // are local-space), not wherever it happens to be placed in
+                // the scene.
+                const localPoint = mmdCurrentMesh.worldToLocal(intersects[0].point.clone());
+                const zone = resolveMMDZone(character, localPoint);
+
+                console.log(`MMD hit zone: ${zone || '(unmapped)'} at`, localPoint);
+
+                if (!zone) return;
+
+                if (zone === 'head') {
+                    handlePetStart(zone);
+                } else {
+                    handlePoke(zone);
+                }
+            };
+
+            canvas.onpointerup = () => {
+                if (petState.active) handlePetEnd();
+            };
+        }
+
+        // Top-level dispatcher - branches to the Live2D or MMD pipeline based
+        // on character.renderMode, and makes sure only the active mode's
+        // canvas/render loop is actually running (avoids wasting GPU/CPU
+        // rendering a hidden canvas, which matters a lot on the RPi target).
+        async function loadCharacterModel(character) {
+            const live2dCanvas = document.getElementById('live2d-canvas');
+            const mmdCanvas = document.getElementById('mmd-canvas');
+            const mode = character.renderMode || 'live2d';
+
+            if (mode === 'mmd') {
+                live2dCanvas.style.display = 'none';
+                mmdCanvas.style.display = 'block';
+                if (app && app.ticker) app.ticker.stop(); // pause Live2D render loop while MMD is active
+                await loadMMDModel(character);
+                setupMMDTouchHandling(character);
+            } else {
+                mmdCanvas.style.display = 'none';
+                live2dCanvas.style.display = 'block';
+                stopMMDRenderLoop();
+                if (app && app.ticker) app.ticker.start();
+                await loadLive2DModel(character);
+            }
+        }
+
         async function loadLive2DModel(character) {
             const loadingDiv = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
@@ -2306,9 +2756,10 @@
                 }
                 connectWebSocket(character.id, summonedByCharacterId, handoffReason);
 
-                // Load the new Live2D model (this also applies its zoneConfig
-                // via applyCharacterZoneConfig, called inside loadLive2DModel)
-                await loadLive2DModel(character);
+                // Load the new model (this also applies its zoneConfig via
+                // applyCharacterZoneConfig, called inside loadLive2DModel) -
+                // dispatches to Live2D or MMD based on character.renderMode
+                await loadCharacterModel(character);
 
                 overlay.classList.add('hidden');
             } catch (err) {
@@ -2466,6 +2917,13 @@
         let lastExpressionChangeTime = 0;
 
         function triggerEmotion(emotion) {
+            const mode = currentCharacter?.renderMode || 'live2d';
+
+            if (mode === 'mmd') {
+                triggerMMDEmotion(emotion);
+                return;
+            }
+
             if (!currentModel) return;
             const idx = EMOTION_TO_EXPRESSION[emotion];
             if (idx === undefined) {
@@ -2479,6 +2937,67 @@
             } catch (err) {
                 console.error(`Failed to trigger emotion "${emotion}":`, err);
             }
+        }
+
+        // MMD models express emotion via morph target BLENDS (multiple morphs
+        // combined), not a single named expression like Live2D's exp3.json
+        // files. This maps each of the 10 emotion labels to a set of morph
+        // names + target influence values, built against Mococo's actual
+        // morph list (confirmed via parsing the real PMX file). A different
+        // MMD model would need its own mapping here if its morph names
+        // differ - this isn't universal the way EMOTION_TO_EXPRESSION mostly
+        // is for similarly-rigged Live2D models.
+        const MMD_EMOTION_MORPHS = {
+            neutral:      {},
+            happy:        { '笑い': 1.0 },
+            angry:        { '怒り': 1.0 },
+            sad:          { 'まゆ下': 0.6, '困る': 0.5 },
+            sympathetic:  { '困る': 0.6 },
+            surprised:    { 'びっくり': 1.0 },
+            sleeping:     { '目閉じ': 1.0 },
+            crying:       { '涙': 1.0, '困る': 0.7 },
+            shocked:      { '青ざめ': 1.0, 'びっくり': 0.8 },
+            embarrassed:  { '照れ': 1.0 },
+            nervous:      { '汗': 1.0, '困る': 0.5 }
+        };
+
+        // Fades all mouth/face morphs not in the target set back toward 0 so
+        // switching emotions doesn't leave a previous expression's morphs
+        // stuck on top of the new one.
+        function triggerMMDEmotion(emotion) {
+            if (!mmdCurrentMesh) return;
+            const dict = mmdCurrentMesh.morphTargetDictionary;
+            const influences = mmdCurrentMesh.morphTargetInfluences;
+            if (!dict || !influences) return;
+
+            const targetMorphs = MMD_EMOTION_MORPHS[emotion];
+            if (targetMorphs === undefined) {
+                console.warn(`Unknown emotion "${emotion}", skipping MMD expression trigger`);
+                return;
+            }
+
+            // Reset every emotion-related morph across the whole mapping table
+            // (not just this emotion's) back to 0 first, so a previous
+            // emotion's morphs don't linger blended in underneath the new one
+            const allEmotionMorphNames = new Set();
+            Object.values(MMD_EMOTION_MORPHS).forEach(morphs => {
+                Object.keys(morphs).forEach(name => allEmotionMorphNames.add(name));
+            });
+            allEmotionMorphNames.forEach(name => {
+                if (name in dict) influences[dict[name]] = 0;
+            });
+
+            // Apply the new emotion's morph blend
+            for (const [morphName, value] of Object.entries(targetMorphs)) {
+                if (morphName in dict) {
+                    influences[dict[morphName]] = value;
+                } else {
+                    console.warn(`MMD morph "${morphName}" not found on this model for emotion "${emotion}"`);
+                }
+            }
+
+            lastExpressionChangeTime = Date.now();
+            console.log(`Emotion triggered (MMD): ${emotion} ->`, targetMorphs);
         }
 
         // ============================================================
@@ -3126,7 +3645,7 @@
             }
 
             // Load whichever character that turned out to be
-            await loadLive2DModel(startupCharacter);
+            await loadCharacterModel(startupCharacter);
             // Fix the sidebar highlight to match - initCharacterSelector()
             // defaulted to highlighting the first entry before we knew which
             // character was actually active, so correct that now

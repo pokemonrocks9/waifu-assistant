@@ -997,17 +997,23 @@
     <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
 
     <!-- MMD (PMX/VMD) support, for the alternate 3D render mode.
-         Pinned to three.js r0.128.0 - the last version with the legacy
-         non-module examples/js build MMDLoader depends on. Loaded
-         unconditionally for now (even if MMD mode is never used) for
-         simplicity - worth lazy-loading later once MMD mode is stable,
-         since this adds real payload weight (~1MB+) to every load. -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/libs/mmdparser.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/animation/CCDIKSolver.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/animation/MMDPhysics.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/animation/MMDAnimationHelper.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r128/examples/js/loaders/MMDLoader.js"></script>
+         Pinned to three.js r106 - confirmed (by checking the actual repo
+         contents at each tag) as a version where the legacy non-module
+         mmdparser.min.js, MMDLoader.js, MMDAnimationHelper.js, CCDIKSolver.js
+         and MMDPhysics.js all still coexist together. r128 (tried first) has
+         a gap: mmdparser had already moved to module-only by then while
+         MMDLoader.js was still the legacy global-script version, so the two
+         were incompatible at that specific tag despite both nominally being
+         part of "examples/js". Loaded unconditionally for now (even if MMD
+         mode is never used) for simplicity - worth lazy-loading later once
+         MMD mode is stable, since this adds real payload weight to every
+         load, more so now on an older/bigger core build. -->
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/libs/mmdparser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/animation/CCDIKSolver.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/animation/MMDPhysics.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/animation/MMDAnimationHelper.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mrdoob/three.js@r106/examples/js/loaders/MMDLoader.js"></script>
     <!-- ammo.js - WASM physics engine MMDPhysics needs for skirt/hair jiggle.
          Sets window.Ammo as an async-init factory function. -->
     <script src="https://cdn.jsdelivr.net/npm/ammo.js@0.0.10/ammo.js"></script>

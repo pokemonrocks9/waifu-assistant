@@ -979,7 +979,7 @@
                  above, but for MMD characters' skeleton bones (X/Y/Z rotation
                  in radians per bone). Only meaningful when an MMD character is
                  currently loaded. -->
-            <div class="settings-section">
+            <div class="settings-section mmd-debug-section" style="display: none;">
                 <div class="toggle-option" style="margin-bottom: 0;">
                     <label>MMD bone rotations (advanced)</label>
                     <label class="toggle-switch">
@@ -997,7 +997,7 @@
             <!-- MMD scene lighting - live intensity sliders for the two
                  lights set up in initMMDScene, so brightness can be tuned by
                  dragging instead of a code change + redeploy each time. -->
-            <div class="settings-section">
+            <div class="settings-section mmd-debug-section" style="display: none;">
                 <div class="toggle-option" style="margin-bottom: 0;">
                     <label>MMD lighting (advanced)</label>
                     <label class="toggle-switch">
@@ -1627,6 +1627,16 @@
         });
 
         // Master toggle for all debug/testing controls - hidden by default
+        // MMD bone/lighting debug sections only make sense (and should only
+        // be visible) when MMD mode is actually enabled - otherwise they're
+        // dead controls for a feature that isn't reachable.
+        function syncMMDDebugSectionsVisibility() {
+            document.querySelectorAll('.mmd-debug-section').forEach(el => {
+                el.style.display = MMD_MODE_ENABLED ? '' : 'none';
+            });
+        }
+        syncMMDDebugSectionsVisibility();
+
         document.getElementById('toggle-debug-settings').addEventListener('change', (e) => {
             const panel = document.getElementById('debug-settings-panel');
             if (e.target.checked) {
@@ -1660,6 +1670,7 @@
             MMD_MODE_ENABLED = e.target.checked;
             localStorage.setItem('compa_mmd_mode_enabled', MMD_MODE_ENABLED ? 'true' : 'false');
             renderCharacterList();
+            syncMMDDebugSectionsVisibility();
         });
 
         async function setupVoiceTuning() {

@@ -1002,15 +1002,15 @@
                     <div class="control-group">
                         <label>Ambient intensity</label>
                         <div class="control-row">
-                            <input type="range" id="mmd-ambient-slider" min="0" max="1.5" step="0.01" value="0.5">
-                            <span class="param-value" id="mmd-ambient-value">0.50</span>
+                            <input type="range" id="mmd-ambient-slider" min="0" max="1.5" step="0.01" value="0.21">
+                            <span class="param-value" id="mmd-ambient-value">0.21</span>
                         </div>
                     </div>
                     <div class="control-group">
                         <label>Directional intensity</label>
                         <div class="control-row">
-                            <input type="range" id="mmd-directional-slider" min="0" max="1.5" step="0.01" value="0.45">
-                            <span class="param-value" id="mmd-directional-value">0.45</span>
+                            <input type="range" id="mmd-directional-slider" min="0" max="1.5" step="0.01" value="0.64">
+                            <span class="param-value" id="mmd-directional-value">0.64</span>
                         </div>
                     </div>
                 </div>
@@ -1075,6 +1075,17 @@
         // Put your Neptunia models in: /models/neptunia-character-name/
         const CUSTOM_MODELS_PATH = './models/';
         
+        // MMD mode (see loadCharacterModel/loadMMDModel) works end-to-end but
+        // is parked for now: real-world load time was too slow, and without
+        // a VMD idle animation she reads as noticeably less "alive" than the
+        // Live2D characters (our procedural sway helps, but it's not the
+        // same). Given the RPi is the actual target hardware and would only
+        // make both of those worse, MMD characters are hidden from selection
+        // by default rather than ripping the feature out - flip this back to
+        // true to bring them back once/if that's worth revisiting (e.g. a
+        // real VMD idle motion becomes available, or load time improves).
+        const MMD_MODE_ENABLED = false;
+
         // Available characters. Each entry supports a `renderMode` field:
         // 'live2d' (default, existing behavior - modelUrl points to a .model3.json)
         // 'mmd' (new - modelUrl points to a .pmx file instead; optionally
@@ -1864,10 +1875,12 @@
             // of their own shading into the texture itself, so scene lights
             // need to be much subtler than a typical three.js scene or
             // everything blows out too bright on top of that baked shading.
-            const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+            // Values below confirmed via the live MMD lighting debug panel
+            // (settings -> advanced) - not a guess anymore.
+            const ambient = new THREE.AmbientLight(0xffffff, 0.21);
             mmdScene.add(ambient);
             mmdAmbientLight = ambient;
-            const directional = new THREE.DirectionalLight(0xffffff, 0.45);
+            const directional = new THREE.DirectionalLight(0xffffff, 0.64);
             directional.position.set(0, 1, 1).normalize();
             mmdScene.add(directional);
             mmdDirectionalLight = directional;
@@ -2138,14 +2151,14 @@
             // World Z is the axis perpendicular to both "arm pointing
             // sideways" (world X) and "arm pointing down" (world -Y), so
             // rotating around it swings the arm within that vertical plane
-            // regardless of the bone's own local orientation. Sign differs
-            // per arm since they're mirrored around world X.
-            const ARM_DOWN_ANGLE = 1.3; // radians, ~75° - brings a horizontal T-pose arm down close to vertical at the side
+            // regardless of the bone's own local orientation. Values below
+            // confirmed via the live MMD bone debug panel (settings ->
+            // advanced) - not a guess anymore.
             const worldZ = new THREE.Vector3(0, 0, 1);
 
             const armBones = [
-                { name: '左腕', angle: -ARM_DOWN_ANGLE },  // left upper arm (+X side)
-                { name: '右腕', angle: ARM_DOWN_ANGLE },   // right upper arm (-X side)
+                { name: '左腕', angle: -0.57 },  // left upper arm (+X side)
+                { name: '右腕', angle: 0.57 },   // right upper arm (-X side)
             ];
 
             armBones.forEach(adj => {
@@ -2972,8 +2985,12 @@
                 updateModel();
             }
 
-            // Populate character list
-            CHARACTERS.forEach((char, index) => {
+            // Populate character list - MMD characters are excluded here
+            // when MMD_MODE_ENABLED is false, without touching the CHARACTERS
+            // array itself (so nothing else that references it by full index
+            // breaks, and flipping the flag back on needs no other changes).
+            const visibleCharacters = CHARACTERS.filter(c => MMD_MODE_ENABLED || c.renderMode !== 'mmd');
+            visibleCharacters.forEach((char, index) => {
                 const item = document.createElement('div');
                 item.className = 'character-item';
                 item.dataset.characterId = char.id;
@@ -4026,7 +4043,7 @@
             // Ask the backend which character is actually active - it owns
             // this fact now (persisted to disk, survives restarts/devices),
             // not something the frontend should assume or track itself
-            let startupCharacter = CHARACTERS[0];
+            let startupCharacter = CHARACTERS.find(c => MMD_MODE_ENABLED || c.renderMode !== 'mmd') || CHARACTERS[0];
             try {
                 const response = await fetch(`${BACKEND_URL}/api/character/active`, {
                     signal: AbortSignal.timeout(5000)
@@ -4034,9 +4051,11 @@
                 if (response.ok) {
                     const data = await response.json();
                     const match = CHARACTERS.find(c => c.id === data.character_id);
-                    if (match) {
+                    if (match && (MMD_MODE_ENABLED || match.renderMode !== 'mmd')) {
                         startupCharacter = match;
                         console.log(`Backend reports active character: ${data.name}`);
+                    } else if (match) {
+                        console.warn(`Backend's active character '${data.character_id}' is an MMD character, but MMD_MODE_ENABLED is false - falling back to default instead of auto-loading her`);
                     } else {
                         console.warn(`Backend's active character '${data.character_id}' isn't in the local CHARACTERS list - falling back to default`);
                     }

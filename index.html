@@ -1680,6 +1680,14 @@
             mmdRenderer.setPixelRatio(window.devicePixelRatio || 1);
             mmdRenderer.setSize(width, height);
             mmdRenderer.setClearColor(0x000000, 0); // transparent background, matches Live2D canvas
+            // r106 predates three.js's modern automatic sRGB output handling -
+            // without this, colors render too bright/washed out since gamma
+            // correction never gets applied. This is the r106-era API
+            // (gammaOutput/gammaFactor); later three.js versions renamed this
+            // to outputEncoding and removed these properties entirely, so
+            // don't "helpfully" update this if the version ever changes.
+            mmdRenderer.gammaOutput = true;
+            mmdRenderer.gammaFactor = 2.2;
 
             mmdScene = new THREE.Scene();
 
@@ -1687,11 +1695,13 @@
             mmdCamera.position.set(0, 14, 30); // rough default, overridden per-character below
             mmdCamera.lookAt(0, 14, 0); // was missing entirely - camera would otherwise default to looking at world origin (floor level), not framing the character
 
-            // Basic lighting - MMD models generally expect at least one
-            // directional light to read correctly, unlike Live2D's flat 2D art
-            const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+            // Basic lighting - MMD toon-shaded materials already bake a lot
+            // of their own shading into the texture itself, so scene lights
+            // need to be much subtler than a typical three.js scene or
+            // everything blows out too bright on top of that baked shading.
+            const ambient = new THREE.AmbientLight(0xffffff, 0.35);
             mmdScene.add(ambient);
-            const directional = new THREE.DirectionalLight(0xffffff, 0.6);
+            const directional = new THREE.DirectionalLight(0xffffff, 0.3);
             directional.position.set(0, 1, 1).normalize();
             mmdScene.add(directional);
 

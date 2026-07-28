@@ -799,7 +799,7 @@
 
     <div id="loading">
         <div class="spinner"></div>
-        <div>Initializing hologram</div>
+        <div id="loading-text">Initializing hologram</div>
     </div>
 
     <div id="character-switch-loading" class="hidden">
@@ -964,6 +964,25 @@
                     <p class="form-hint mb-2">Live parameter sliders. Move one to see what it controls, then use combinations to build custom expressions.</p>
                     <div id="raw-params-list"></div>
                     <button class="btn ghost mt-2" id="raw-params-reset" style="width: 100%;">Reset all to default</button>
+                </div>
+            </div>
+
+            <!-- MMD bone rotation testing panel - same idea as raw parameters
+                 above, but for MMD characters' skeleton bones (X/Y/Z rotation
+                 in radians per bone). Only meaningful when an MMD character is
+                 currently loaded. -->
+            <div class="settings-section">
+                <div class="toggle-option" style="margin-bottom: 0;">
+                    <label>MMD bone rotations (advanced)</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-mmd-bones">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="mmd-bones-panel" class="hidden" style="margin-top: 12px; max-height: 320px; overflow-y: auto;">
+                    <p class="form-hint mb-2">Live bone rotation sliders (radians, X/Y/Z per bone). Only useful with an MMD character loaded.</p>
+                    <div id="mmd-bones-list"></div>
+                    <button class="btn ghost mt-2" id="mmd-bones-reset" style="width: 100%;">Reset all to bind pose</button>
                 </div>
             </div>
 
@@ -1443,6 +1462,88 @@
             }
         });
 
+        // MMD bone rotation debug panel - same idea as the raw parameter
+        // panel above, for tuning/inspecting bone poses (like the arm-down
+        // idle correction) without needing a code change + redeploy cycle
+        // for every attempt.
+        const mmdBoneResetDefaults = {}; // bone name -> {x,y,z} at the moment the panel was first opened, used as the "reset" baseline
+
+        function setupMMDBonePanel() {
+            if (!mmdCurrentMesh || !mmdCurrentMesh.skeleton) {
+                console.warn('No MMD skeleton available - load an MMD character first');
+                return;
+            }
+
+            const listEl = document.getElementById('mmd-bones-list');
+            listEl.innerHTML = '';
+
+            const bones = mmdCurrentMesh.skeleton.bones;
+
+            bones.forEach(bone => {
+                mmdBoneResetDefaults[bone.name] = { x: bone.rotation.x, y: bone.rotation.y, z: bone.rotation.z };
+
+                const row = document.createElement('div');
+                row.className = 'control-group';
+                row.innerHTML = `
+                    <label>${bone.name}</label>
+                    <div class="control-row">
+                        <span style="width: 14px; font-size: 11px; opacity: 0.6;">X</span>
+                        <input type="range" min="-3.14" max="3.14" step="0.01" value="${bone.rotation.x}" data-axis="x">
+                        <span class="param-value" data-axis-label="x">${bone.rotation.x.toFixed(2)}</span>
+                    </div>
+                    <div class="control-row">
+                        <span style="width: 14px; font-size: 11px; opacity: 0.6;">Y</span>
+                        <input type="range" min="-3.14" max="3.14" step="0.01" value="${bone.rotation.y}" data-axis="y">
+                        <span class="param-value" data-axis-label="y">${bone.rotation.y.toFixed(2)}</span>
+                    </div>
+                    <div class="control-row">
+                        <span style="width: 14px; font-size: 11px; opacity: 0.6;">Z</span>
+                        <input type="range" min="-3.14" max="3.14" step="0.01" value="${bone.rotation.z}" data-axis="z">
+                        <span class="param-value" data-axis-label="z">${bone.rotation.z.toFixed(2)}</span>
+                    </div>
+                `;
+                listEl.appendChild(row);
+
+                row.querySelectorAll('input[type="range"]').forEach(slider => {
+                    const axis = slider.dataset.axis;
+                    const valueLabel = row.querySelector(`[data-axis-label="${axis}"]`);
+                    slider.addEventListener('input', (e) => {
+                        const val = parseFloat(e.target.value);
+                        valueLabel.textContent = val.toFixed(2);
+                        bone.rotation[axis] = val;
+                    });
+                });
+            });
+
+            console.log(`✅ MMD bone panel populated with ${bones.length} bones`);
+        }
+
+        let mmdBonePanelOpen = false; // when true, the idle sway animation pauses so manual slider testing isn't fought every frame
+
+        document.getElementById('toggle-mmd-bones').addEventListener('change', (e) => {
+            const panel = document.getElementById('mmd-bones-panel');
+            mmdBonePanelOpen = e.target.checked;
+            if (e.target.checked) {
+                panel.classList.remove('hidden');
+                if (document.getElementById('mmd-bones-list').children.length === 0) {
+                    setupMMDBonePanel();
+                }
+            } else {
+                panel.classList.add('hidden');
+            }
+        });
+
+        document.getElementById('mmd-bones-reset').addEventListener('click', () => {
+            if (!mmdCurrentMesh || !mmdCurrentMesh.skeleton) return;
+            mmdCurrentMesh.skeleton.bones.forEach(bone => {
+                const def = mmdBoneResetDefaults[bone.name];
+                if (!def) return;
+                bone.rotation.set(def.x, def.y, def.z);
+            });
+            // Rebuild the panel so slider positions/labels reflect the reset values
+            setupMMDBonePanel();
+        });
+
         // Master toggle for all debug/testing controls - hidden by default
         document.getElementById('toggle-debug-settings').addEventListener('change', (e) => {
             const panel = document.getElementById('debug-settings-panel');
@@ -1742,6 +1843,22 @@
             return mmdAmmoReady;
         }
 
+        // Updates whichever loading overlay is actually visible right now -
+        // the initial page load uses #loading, a mid-session character
+        // switch uses #character-switch-loading. Having one helper means the
+        // MMD loading stages below give real, accurate status either way,
+        // without needing to know in advance which context triggered them.
+        function setLoadingStatus(text) {
+            const initial = document.getElementById('loading-text');
+            const switchOverlay = document.getElementById('character-switch-loading-text');
+            if (initial && initial.closest('#loading')?.style.display !== 'none') {
+                initial.textContent = text;
+            }
+            if (switchOverlay && !document.getElementById('character-switch-loading')?.classList.contains('hidden')) {
+                switchOverlay.textContent = text;
+            }
+        }
+
         async function loadMMDModel(character) {
             const loadingDiv = document.getElementById('loading');
             const errorDiv = document.getElementById('error');
@@ -1751,6 +1868,7 @@
             try {
                 console.log(`Loading MMD model: ${character.name}`);
                 console.log(`PMX URL: ${character.modelUrl}`);
+                setLoadingStatus(`Loading ${character.name}'s model...`);
 
                 initMMDScene();
 
@@ -1766,6 +1884,7 @@
 
                 const wantsPhysics = !!character.mmdPhysics;
                 if (wantsPhysics) {
+                    setLoadingStatus('Initializing physics engine...');
                     await ensureAmmoReady();
                 }
 
@@ -1778,12 +1897,16 @@
                 // mesh until the manager reports everything done gives a
                 // clean single reveal instead.
                 const mmdLoadManager = new THREE.LoadingManager();
+                mmdLoadManager.onProgress = (url, itemsLoaded, itemsTotal) => {
+                    setLoadingStatus(`Loading textures... (${itemsLoaded}/${itemsTotal})`);
+                };
                 const loader = new THREE.MMDLoader(mmdLoadManager);
                 const helper = new THREE.MMDAnimationHelper({
                     afterglow: 2.0,
                     resetPhysicsOnLoop: true
                 });
 
+                setLoadingStatus(`Parsing ${character.name}'s model geometry...`);
                 const mesh = await new Promise((resolve, reject) => {
                     if (character.mmdMotionUrl) {
                         loader.loadWithAnimation(
@@ -1807,9 +1930,11 @@
                 // mmdLoadManager.onLoad below) - geometry exists at this point
                 // but materials may still be mid-download.
                 mesh.visible = false;
+                setLoadingStatus('Loading textures...');
 
                 mmdLoadManager.onLoad = () => {
                     mesh.visible = true;
+                    setLoadingStatus('Ready!');
                     loadingDiv.style.display = 'none';
                     console.log('✅ All MMD textures loaded, revealing model');
                 };
@@ -1843,6 +1968,27 @@
                 mmdCurrentMesh = mesh;
                 mmdCurrentHelper = helper;
 
+                // MMDLoader (r106) never sets texture.encoding on any texture
+                // it loads, so diffuse/color maps default to LinearEncoding.
+                // Combined with the renderer's gammaOutput (added earlier to
+                // fix over-bright output), that mismatch produces a flat,
+                // washed-out/grey look - the ordinary sRGB-authored PNG
+                // textures were being treated as linear data going into an
+                // output stage that now expects sRGB input. Setting this
+                // explicitly on every material's color-relevant maps fixes
+                // the color pipeline end to end.
+                const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+                materials.forEach(mat => {
+                    if (!mat) return;
+                    ['map', 'emissiveMap'].forEach(mapKey => {
+                        if (mat[mapKey]) {
+                            mat[mapKey].encoding = THREE.sRGBEncoding;
+                            mat[mapKey].needsUpdate = true;
+                        }
+                    });
+                });
+
+                setLoadingStatus('Setting up pose...');
                 applyMMDIdlePose(mesh); // bring arms down from T-pose bind pose into a relaxed stance, since there's no VMD idle motion to do this for us
 
                 // Per-character camera framing override - the generic default
@@ -1971,6 +2117,7 @@
         // frame (not incremented), so it can't drift or accumulate.
         function updateMMDIdleSway(mesh, delta) {
             if (!mesh || !mesh.skeleton) return;
+            if (mmdBonePanelOpen) return; // let manual slider testing stand, uncontested
             mmdIdleElapsed += delta;
 
             const upperBody = mesh.skeleton.getBoneByName('上半身');
@@ -2895,12 +3042,35 @@
             overlay.classList.remove('hidden');
             overlayText.textContent = `Loading ${character.name}...`;
 
+            // The backend's /api/character/switch call does RVC reload then
+            // Ollama warmup internally as ONE blocking request/response - it
+            // doesn't stream real progress back, so the frontend has no way
+            // to know which stage is actually active at any given moment.
+            // This cycles through reasonably-timed labels as a best-effort
+            // approximation of what's probably happening, NOT genuine live
+            // backend confirmation (unlike the MMD loading stages above,
+            // which ARE accurate since the frontend directly controls those
+            // steps). If the real switch finishes faster or slower than
+            // these guessed intervals, the label may be a stage behind/ahead
+            // of reality for a moment - cosmetic only.
+            const switchStages = [
+                { at: 0, text: `Reloading ${character.name}'s voice model...` },
+                { at: 4000, text: `Voice model burning in...` },
+                { at: 9000, text: `Warming up personality...` },
+                { at: 14000, text: `Almost ready...` },
+            ];
+            const stageTimers = switchStages.map(stage =>
+                setTimeout(() => { overlayText.textContent = stage.text; }, stage.at)
+            );
+            const clearStageTimers = () => stageTimers.forEach(t => clearTimeout(t));
+
             try {
                 const response = await fetch(`${BACKEND_URL}/api/character/switch`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ character_id: character.id })
                 });
+                clearStageTimers();
                 const result = await response.json();
 
                 if (result.error) {
@@ -2927,6 +3097,7 @@
 
                 overlay.classList.add('hidden');
             } catch (err) {
+                clearStageTimers();
                 console.error('Character load request failed:', err);
                 overlayText.textContent = 'Failed to load character - check connection';
                 setTimeout(() => overlay.classList.add('hidden'), 3000);

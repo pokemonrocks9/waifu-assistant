@@ -844,6 +844,14 @@
                     <span class="toggle-slider"></span>
                 </label>
             </div>
+
+            <div class="toggle-option" style="margin-bottom: 0; margin-top: 8px;">
+                <label>Show MMD characters (experimental)</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-mmd-mode">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
         </div>
 
         <!-- Everything below is hidden unless "Show debug settings" is on -->
@@ -1081,10 +1089,11 @@
         // Live2D characters (our procedural sway helps, but it's not the
         // same). Given the RPi is the actual target hardware and would only
         // make both of those worse, MMD characters are hidden from selection
-        // by default rather than ripping the feature out - flip this back to
-        // true to bring them back once/if that's worth revisiting (e.g. a
-        // real VMD idle motion becomes available, or load time improves).
-        const MMD_MODE_ENABLED = false;
+        // by default. Now a real settings toggle (persisted in localStorage)
+        // rather than a hardcoded const, so it can be flipped without a code
+        // change - the toggle warns that it's not fully polished when turned
+        // on, rather than silently re-enabling it.
+        let MMD_MODE_ENABLED = localStorage.getItem('compa_mmd_mode_enabled') === 'true'; // default OFF
 
         // Available characters. Each entry supports a `renderMode` field:
         // 'live2d' (default, existing behavior - modelUrl points to a .model3.json)
@@ -1626,6 +1635,31 @@
             } else {
                 panel.classList.add('hidden');
             }
+        });
+
+        // MMD mode toggle - user-facing (not just a debug toggle), so it
+        // warns before actually enabling rather than silently exposing an
+        // experimental feature. Syncs its initial checked state from the
+        // persisted value on load.
+        const mmdModeToggle = document.getElementById('toggle-mmd-mode');
+        mmdModeToggle.checked = MMD_MODE_ENABLED;
+        mmdModeToggle.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                const confirmed = confirm(
+                    "MMD character support is experimental and not fully polished:\n\n" +
+                    "- Load times are noticeably slower than Live2D\n" +
+                    "- No idle animation file, so she's less lively (procedural sway only)\n" +
+                    "- Not tested/tuned for the Raspberry Pi target hardware\n\n" +
+                    "Enable anyway?"
+                );
+                if (!confirmed) {
+                    e.target.checked = false;
+                    return;
+                }
+            }
+            MMD_MODE_ENABLED = e.target.checked;
+            localStorage.setItem('compa_mmd_mode_enabled', MMD_MODE_ENABLED ? 'true' : 'false');
+            renderCharacterList();
         });
 
         async function setupVoiceTuning() {
@@ -2813,6 +2847,62 @@
         }
 
         // Character selection UI
+        // Populates #character-list from CHARACTERS, excluding MMD characters
+        // unless MMD_MODE_ENABLED is true. Standalone (not just inline inside
+        // initCharacterSelector) so it can be re-called later when the MMD
+        // toggle changes, without re-running all the other one-time setup
+        // (sliders, menu open/close listeners, etc.) that lives in that
+        // function - clears and rebuilds the list each time it's called, so
+        // it's safe to call more than once.
+        function renderCharacterList() {
+            const characterList = document.getElementById('character-list');
+            const characterMenu = document.getElementById('character-menu');
+            characterList.innerHTML = '';
+
+            const visibleCharacters = CHARACTERS.filter(c => MMD_MODE_ENABLED || c.renderMode !== 'mmd');
+            visibleCharacters.forEach((char, index) => {
+                const item = document.createElement('div');
+                item.className = 'character-item';
+                item.dataset.characterId = char.id;
+                if (index === 0) item.classList.add('active');
+
+                item.innerHTML = `
+                    <div class="character-name">${char.name}</div>
+                    <div class="character-desc">${char.description}</div>
+                `;
+
+                item.addEventListener('click', () => {
+                    // Update active state
+                    document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
+                    item.classList.add('active');
+
+                    // Close menu first (mobile: slides down: desktop: slides
+                    // right) and let that animation actually play before the
+                    // loading overlay takes over the screen
+                    characterMenu.classList.remove('open');
+
+                    // Also hide the transient position readout if it was left
+                    // showing from a slider drag earlier - this handler closes
+                    // the menu a different way than the outside-click listeners,
+                    // so it needs the same cleanup they do or it gets stuck
+                    // showing stale values until the debug toggle is cycled
+                    const positionDisplay = document.getElementById('position-display');
+                    const togglePositionDisplay = document.getElementById('toggle-position-display');
+                    if (positionDisplay && togglePositionDisplay && !togglePositionDisplay.checked) {
+                        positionDisplay.style.display = 'none';
+                    }
+
+                    setTimeout(() => {
+                        switchCharacter(char).then(() => {
+                            updateSliders(char);
+                        });
+                    }, 300);
+                });
+
+                characterList.appendChild(item);
+            });
+        }
+
         function initCharacterSelector() {
             const characterList = document.getElementById('character-list');
             const characterMenu = document.getElementById('character-menu');
@@ -2985,53 +3075,8 @@
                 updateModel();
             }
 
-            // Populate character list - MMD characters are excluded here
-            // when MMD_MODE_ENABLED is false, without touching the CHARACTERS
-            // array itself (so nothing else that references it by full index
-            // breaks, and flipping the flag back on needs no other changes).
-            const visibleCharacters = CHARACTERS.filter(c => MMD_MODE_ENABLED || c.renderMode !== 'mmd');
-            visibleCharacters.forEach((char, index) => {
-                const item = document.createElement('div');
-                item.className = 'character-item';
-                item.dataset.characterId = char.id;
-                if (index === 0) item.classList.add('active');
-                
-                item.innerHTML = `
-                    <div class="character-name">${char.name}</div>
-                    <div class="character-desc">${char.description}</div>
-                `;
-                
-                item.addEventListener('click', () => {
-                    // Update active state
-                    document.querySelectorAll('.character-item').forEach(el => el.classList.remove('active'));
-                    item.classList.add('active');
+            renderCharacterList();
 
-                    // Close menu first (mobile: slides down: desktop: slides
-                    // right) and let that animation actually play before the
-                    // loading overlay takes over the screen
-                    characterMenu.classList.remove('open');
-
-                    // Also hide the transient position readout if it was left
-                    // showing from a slider drag earlier - this handler closes
-                    // the menu a different way than the outside-click listeners,
-                    // so it needs the same cleanup they do or it gets stuck
-                    // showing stale values until the debug toggle is cycled
-                    const positionDisplay = document.getElementById('position-display');
-                    const togglePositionDisplay = document.getElementById('toggle-position-display');
-                    if (positionDisplay && togglePositionDisplay && !togglePositionDisplay.checked) {
-                        positionDisplay.style.display = 'none';
-                    }
-
-                    setTimeout(() => {
-                        switchCharacter(char).then(() => {
-                            updateSliders(char);
-                        });
-                    }, 300);
-                });
-                
-                characterList.appendChild(item);
-            });
-            
             // Initialize sliders with first character
             if (CHARACTERS.length > 0) {
                 updateSliders(CHARACTERS[0]);

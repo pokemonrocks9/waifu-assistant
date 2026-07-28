@@ -1980,7 +1980,7 @@
                 const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
                 materials.forEach(mat => {
                     if (!mat) return;
-                    ['map', 'emissiveMap'].forEach(mapKey => {
+                    ['map', 'emissiveMap', 'envMap'].forEach(mapKey => {
                         if (mat[mapKey]) {
                             mat[mapKey].encoding = THREE.sRGBEncoding;
                             mat[mapKey].needsUpdate = true;

@@ -1769,7 +1769,16 @@
                     await ensureAmmoReady();
                 }
 
-                const loader = new THREE.MMDLoader();
+                // Dedicated LoadingManager so we can detect when ALL textures
+                // (not just the PMX geometry itself) have actually finished
+                // loading. Without this, the mesh renders as soon as geometry
+                // is parsed while its 5+ separate 4K texture files are still
+                // streaming in independently - each one popping in as it
+                // finishes, which reads as loading "in chunks". Hiding the
+                // mesh until the manager reports everything done gives a
+                // clean single reveal instead.
+                const mmdLoadManager = new THREE.LoadingManager();
+                const loader = new THREE.MMDLoader(mmdLoadManager);
                 const helper = new THREE.MMDAnimationHelper({
                     afterglow: 2.0,
                     resetPhysicsOnLoop: true
@@ -1793,6 +1802,29 @@
                         );
                     }
                 });
+
+                // Hidden until every texture is confirmed loaded (see
+                // mmdLoadManager.onLoad below) - geometry exists at this point
+                // but materials may still be mid-download.
+                mesh.visible = false;
+
+                mmdLoadManager.onLoad = () => {
+                    mesh.visible = true;
+                    loadingDiv.style.display = 'none';
+                    console.log('✅ All MMD textures loaded, revealing model');
+                };
+                // Safety fallback - if onLoad somehow never fires (a texture
+                // load hangs/errors in a way that doesn't trigger it), don't
+                // leave her invisible (and the spinner stuck) forever. 15s is
+                // generous for even a slow connection loading a handful of 4K
+                // textures.
+                setTimeout(() => {
+                    if (!mesh.visible) {
+                        mesh.visible = true;
+                        loadingDiv.style.display = 'none';
+                        console.warn('⚠️ MMD texture LoadingManager never fired onLoad within 15s - revealing model anyway as a fallback');
+                    }
+                }, 15000);
 
                 mesh.castShadow = true;
                 mesh.receiveShadow = true;
@@ -1841,8 +1873,7 @@
 
                 startMMDRenderLoop();
 
-                loadingDiv.style.display = 'none';
-                console.log(`✅ MMD model loaded successfully: ${character.name}`);
+                console.log(`✅ MMD model loaded successfully: ${character.name} (waiting on textures before reveal)`);
             } catch (err) {
                 console.error('Failed to load MMD model:', err);
                 loadingDiv.style.display = 'none';
@@ -1885,8 +1916,8 @@
             const worldZ = new THREE.Vector3(0, 0, 1);
 
             const armBones = [
-                { name: '左腕', angle: -ARM_DOWN_ANGLE },  // left upper arm (+X side)
-                { name: '右腕', angle: ARM_DOWN_ANGLE },   // right upper arm (-X side)
+                { name: '左腕', angle: ARM_DOWN_ANGLE },   // left upper arm (+X side) - sign flipped after visual test showed arms going UP instead of down
+                { name: '右腕', angle: -ARM_DOWN_ANGLE },  // right upper arm (-X side) - sign flipped, same reason
             ];
 
             armBones.forEach(adj => {

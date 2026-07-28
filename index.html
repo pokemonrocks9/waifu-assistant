@@ -986,6 +986,36 @@
                 </div>
             </div>
 
+            <!-- MMD scene lighting - live intensity sliders for the two
+                 lights set up in initMMDScene, so brightness can be tuned by
+                 dragging instead of a code change + redeploy each time. -->
+            <div class="settings-section">
+                <div class="toggle-option" style="margin-bottom: 0;">
+                    <label>MMD lighting (advanced)</label>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="toggle-mmd-lighting">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div id="mmd-lighting-panel" class="hidden" style="margin-top: 12px;">
+                    <p class="form-hint mb-2">Only useful with an MMD character loaded.</p>
+                    <div class="control-group">
+                        <label>Ambient intensity</label>
+                        <div class="control-row">
+                            <input type="range" id="mmd-ambient-slider" min="0" max="1.5" step="0.01" value="0.5">
+                            <span class="param-value" id="mmd-ambient-value">0.50</span>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <label>Directional intensity</label>
+                        <div class="control-row">
+                            <input type="range" id="mmd-directional-slider" min="0" max="1.5" step="0.01" value="0.45">
+                            <span class="param-value" id="mmd-directional-value">0.45</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </div>
 
         <div id="character-list">
@@ -1544,6 +1574,38 @@
             setupMMDBonePanel();
         });
 
+        document.getElementById('toggle-mmd-lighting').addEventListener('change', (e) => {
+            const panel = document.getElementById('mmd-lighting-panel');
+            if (e.target.checked) {
+                panel.classList.remove('hidden');
+                // Sync slider positions to whatever the lights are actually
+                // set to right now, in case they were changed elsewhere
+                // (e.g. hardcoded values were tuned since this panel last opened)
+                if (mmdAmbientLight) {
+                    document.getElementById('mmd-ambient-slider').value = mmdAmbientLight.intensity;
+                    document.getElementById('mmd-ambient-value').textContent = mmdAmbientLight.intensity.toFixed(2);
+                }
+                if (mmdDirectionalLight) {
+                    document.getElementById('mmd-directional-slider').value = mmdDirectionalLight.intensity;
+                    document.getElementById('mmd-directional-value').textContent = mmdDirectionalLight.intensity.toFixed(2);
+                }
+            } else {
+                panel.classList.add('hidden');
+            }
+        });
+
+        document.getElementById('mmd-ambient-slider').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            document.getElementById('mmd-ambient-value').textContent = val.toFixed(2);
+            if (mmdAmbientLight) mmdAmbientLight.intensity = val;
+        });
+
+        document.getElementById('mmd-directional-slider').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            document.getElementById('mmd-directional-value').textContent = val.toFixed(2);
+            if (mmdDirectionalLight) mmdDirectionalLight.intensity = val;
+        });
+
         // Master toggle for all debug/testing controls - hidden by default
         document.getElementById('toggle-debug-settings').addEventListener('change', (e) => {
             const panel = document.getElementById('debug-settings-panel');
@@ -1761,6 +1823,8 @@
         let mmdAnimationFrameId = null;
         let mmdRaycaster = null;
         let mmdAmmoReady = null;        // Promise, resolves once Ammo() WASM init completes
+        let mmdAmbientLight = null;     // referenced by the debug panel for live intensity tuning
+        let mmdDirectionalLight = null; // same
 
         // MMD morph target names for mouth shapes vary by model author, but
         // these Japanese vowel names are the de-facto standard convention
@@ -1802,9 +1866,11 @@
             // everything blows out too bright on top of that baked shading.
             const ambient = new THREE.AmbientLight(0xffffff, 0.5);
             mmdScene.add(ambient);
+            mmdAmbientLight = ambient;
             const directional = new THREE.DirectionalLight(0xffffff, 0.45);
             directional.position.set(0, 1, 1).normalize();
             mmdScene.add(directional);
+            mmdDirectionalLight = directional;
 
             mmdClock = new THREE.Clock();
             mmdRaycaster = new THREE.Raycaster();

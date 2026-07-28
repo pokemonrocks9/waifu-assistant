@@ -1867,25 +1867,39 @@
             const skeleton = mesh.skeleton;
             if (!skeleton) return;
 
+            // Rotating in the bone's LOCAL space (what the previous version of
+            // this function did) depends entirely on how this specific rig's
+            // bone axes were authored - a local rotation can end up as an
+            // invisible twist along the arm's own length instead of actually
+            // swinging it down, with no visible effect (this appears to be
+            // exactly what happened - she stayed in a T-pose despite the
+            // correction "running"). Rotating around a WORLD axis instead
+            // sidesteps that uncertainty: world Z is the axis perpendicular to
+            // both "arm pointing sideways" (world X) and "arm pointing down"
+            // (world -Y), so rotating around it reliably swings the arm within
+            // that vertical plane regardless of the bone's own local
+            // orientation. Sign differs per arm since they're mirrored around
+            // world X - left arm sits at +X so needs a negative rotation to
+            // swing toward -Y, right arm sits at -X so needs positive.
             const ARM_DOWN_ANGLE = 1.3; // radians, ~75° - brings a horizontal T-pose arm down close to vertical at the side
-            const ELBOW_BEND_ANGLE = 0.25; // slight natural elbow bend rather than a perfectly straight arm
+            const worldZ = new THREE.Vector3(0, 0, 1);
 
-            const poseAdjustments = [
-                { name: '左腕', z: ARM_DOWN_ANGLE },   // left upper arm
-                { name: '右腕', z: -ARM_DOWN_ANGLE },  // right upper arm (mirrored sign)
-                { name: '左ひじ', y: ELBOW_BEND_ANGLE },
-                { name: '右ひじ', y: -ELBOW_BEND_ANGLE },
+            const armBones = [
+                { name: '左腕', angle: -ARM_DOWN_ANGLE },  // left upper arm (+X side)
+                { name: '右腕', angle: ARM_DOWN_ANGLE },   // right upper arm (-X side)
             ];
 
-            poseAdjustments.forEach(adj => {
+            armBones.forEach(adj => {
                 const bone = skeleton.getBoneByName(adj.name);
                 if (!bone) {
                     console.warn(`MMD idle pose: bone "${adj.name}" not found on this rig - skipping`);
                     return;
                 }
-                if (adj.x) bone.rotation.x += adj.x;
-                if (adj.y) bone.rotation.y += adj.y;
-                if (adj.z) bone.rotation.z += adj.z;
+                const before = bone.getWorldPosition(new THREE.Vector3());
+                bone.rotateOnWorldAxis(worldZ, adj.angle);
+                mesh.updateMatrixWorld(true); // so the next bone's getWorldPosition reads this change, and so our own log below is accurate
+                const after = bone.getWorldPosition(new THREE.Vector3());
+                console.log(`MMD idle pose: "${adj.name}" world pos ${before.x.toFixed(2)},${before.y.toFixed(2)},${before.z.toFixed(2)} -> ${after.x.toFixed(2)},${after.y.toFixed(2)},${after.z.toFixed(2)}`);
             });
 
             // Capture the resting rotation of every bone the idle sway

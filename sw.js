@@ -1,6 +1,6 @@
 // Service Worker for Compa PWA
 // Bump this version number on every deploy to force clients to pick up new files
-const SW_VERSION = '0.7.8';
+const SW_VERSION = '0.7.9';
 const CACHE_NAME = `cpu-pod-${SW_VERSION}`;
 const urlsToCache = [
   './',

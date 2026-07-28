@@ -1811,6 +1811,8 @@
                 mmdCurrentMesh = mesh;
                 mmdCurrentHelper = helper;
 
+                applyMMDIdlePose(mesh); // bring arms down from T-pose bind pose into a relaxed stance, since there's no VMD idle motion to do this for us
+
                 // Per-character camera framing override - the generic default
                 // from initMMDScene is a rough guess and won't suit every
                 // model's proportions/pose.
@@ -1849,6 +1851,89 @@
             }
         }
 
+        // No VMD idle motion is available, so the mesh otherwise just sits in
+        // its raw bind pose - which for most PMX rigs is a literal T-pose
+        // (arms held straight out horizontally). This brings the arms down
+        // into a relaxed stance, applied ONCE right after load. Rotation
+        // amounts (~80°) are the standard convention for this kind of
+        // correction on a typical MMD rig, but the exact axis/sign can
+        // differ per-model depending on how the rig was authored - if her
+        // arms end up rotating the WRONG way (e.g. up instead of down, or
+        // through her body), that means this specific rig's bone axes are
+        // oriented differently than assumed, and the sign needs flipping.
+        const mmdIdleBaseRotations = {}; // bone name -> base THREE.Euler, captured after the pose correction so the sway animation below has a stable rest state to oscillate around instead of drifting
+
+        function applyMMDIdlePose(mesh) {
+            const skeleton = mesh.skeleton;
+            if (!skeleton) return;
+
+            const ARM_DOWN_ANGLE = 1.3; // radians, ~75° - brings a horizontal T-pose arm down close to vertical at the side
+            const ELBOW_BEND_ANGLE = 0.25; // slight natural elbow bend rather than a perfectly straight arm
+
+            const poseAdjustments = [
+                { name: '左腕', z: ARM_DOWN_ANGLE },   // left upper arm
+                { name: '右腕', z: -ARM_DOWN_ANGLE },  // right upper arm (mirrored sign)
+                { name: '左ひじ', y: ELBOW_BEND_ANGLE },
+                { name: '右ひじ', y: -ELBOW_BEND_ANGLE },
+            ];
+
+            poseAdjustments.forEach(adj => {
+                const bone = skeleton.getBoneByName(adj.name);
+                if (!bone) {
+                    console.warn(`MMD idle pose: bone "${adj.name}" not found on this rig - skipping`);
+                    return;
+                }
+                if (adj.x) bone.rotation.x += adj.x;
+                if (adj.y) bone.rotation.y += adj.y;
+                if (adj.z) bone.rotation.z += adj.z;
+            });
+
+            // Capture the resting rotation of every bone the idle sway
+            // animation will touch, AFTER the pose correction above - this
+            // is what the sway oscillates around each frame.
+            ['上半身', '首', '頭'].forEach(name => {
+                const bone = skeleton.getBoneByName(name);
+                if (bone) {
+                    mmdIdleBaseRotations[name] = bone.rotation.clone();
+                } else {
+                    console.warn(`MMD idle sway: bone "${name}" not found on this rig - that part of the sway will be skipped`);
+                }
+            });
+
+            console.log('✅ MMD idle pose applied (T-pose corrected to relaxed stance)');
+        }
+
+        let mmdIdleElapsed = 0;
+
+        // Subtle continuous breathing/head-sway, layered on top of the fixed
+        // base pose from applyMMDIdlePose - recomputed from elapsed time each
+        // frame (not incremented), so it can't drift or accumulate.
+        function updateMMDIdleSway(mesh, delta) {
+            if (!mesh || !mesh.skeleton) return;
+            mmdIdleElapsed += delta;
+
+            const upperBody = mesh.skeleton.getBoneByName('上半身');
+            if (upperBody && mmdIdleBaseRotations['上半身']) {
+                const base = mmdIdleBaseRotations['上半身'];
+                const breathe = Math.sin(mmdIdleElapsed * 0.8) * 0.02; // slow, small breathing sway
+                upperBody.rotation.x = base.x + breathe;
+            }
+
+            const neck = mesh.skeleton.getBoneByName('首');
+            if (neck && mmdIdleBaseRotations['首']) {
+                const base = mmdIdleBaseRotations['首'];
+                const sway = Math.sin(mmdIdleElapsed * 0.5) * 0.015;
+                neck.rotation.y = base.y + sway;
+            }
+
+            const head = mesh.skeleton.getBoneByName('頭');
+            if (head && mmdIdleBaseRotations['頭']) {
+                const base = mmdIdleBaseRotations['頭'];
+                const bob = Math.sin(mmdIdleElapsed * 0.6 + 1) * 0.02; // phase-offset from neck so they don't move in lockstep
+                head.rotation.x = base.x + bob;
+            }
+        }
+
         function startMMDRenderLoop() {
             if (mmdAnimationFrameId) cancelAnimationFrame(mmdAnimationFrameId);
 
@@ -1860,6 +1945,7 @@
                     mmdCurrentHelper.update(delta);
                 }
 
+                updateMMDIdleSway(mmdCurrentMesh, delta);
                 updateMMDLipSync();
 
                 if (mmdRenderer && mmdScene && mmdCamera) {

@@ -1800,9 +1800,9 @@
             // of their own shading into the texture itself, so scene lights
             // need to be much subtler than a typical three.js scene or
             // everything blows out too bright on top of that baked shading.
-            const ambient = new THREE.AmbientLight(0xffffff, 0.35);
+            const ambient = new THREE.AmbientLight(0xffffff, 0.5);
             mmdScene.add(ambient);
-            const directional = new THREE.DirectionalLight(0xffffff, 0.3);
+            const directional = new THREE.DirectionalLight(0xffffff, 0.45);
             directional.position.set(0, 1, 1).normalize();
             mmdScene.add(directional);
 

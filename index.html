@@ -2820,6 +2820,22 @@
             lipSyncState.speakingDuration = durationMs;
             lipSyncState._neutralResetDone = false;
             console.log(`🗣️ Started lip sync for ${durationMs}ms (${(durationMs/1000).toFixed(2)}s)`);
+
+            // The interaction-lock safety timeout (see setInteractionsLocked)
+            // was set to a fixed window BEFORE we knew how long this response's
+            // actual audio would run - a long-winded reply can easily exceed
+            // that, force-unlocking controls while she's still visibly/audibly
+            // speaking (confirmed: happened on an unusually long response).
+            // Now that we know the real duration, extend the safety timer to
+            // comfortably cover it instead of leaving it at the original guess.
+            if (interactionsLocked && lockSafetyTimeout) {
+                clearTimeout(lockSafetyTimeout);
+                const safetyMargin = 10000; // generous buffer past actual audio end, in case onended is ever delayed
+                lockSafetyTimeout = setTimeout(() => {
+                    console.warn('Interaction lock safety timeout hit - force unlocking');
+                    setInteractionsLocked(false);
+                }, durationMs + safetyMargin);
+            }
         }
 
         // Test lip sync button

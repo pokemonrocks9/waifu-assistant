@@ -1331,6 +1331,7 @@
         let app;
         let currentModel = null;
         let currentModelTickerFn = null; // reference to the active app.ticker.add callback, so we can remove it before adding a new one on reload/switch instead of leaking it forever
+        let currentPointerUpHandler = null; // same idea, for the global pet-release listener added in setupTouchInteractions - was leaking a duplicate on every single character switch (confirmed: never removed before, unlike the ticker callback)
         let pendingCharacterSwitch = null; // set when the backend flags a mid-conversation switch request
         let pendingSwitchReason = null; // the user's original message, for the new character's handoff greeting to reference
         let currentCharacter = null;
@@ -3221,6 +3222,17 @@
 
                 console.log(`Character switch result:`, result);
 
+                // Backend switch (voice/personality) is done at this point -
+                // update the label honestly instead of leaving it frozen on
+                // whichever backend-stage text happened to be showing when
+                // the fetch resolved (which could still be the very first
+                // stage, if the real switch finished faster than our staged
+                // guesses assumed - confirmed: this was leaving "Reloading
+                // X's voice model..." visible long after she'd already
+                // started speaking via the independently-connecting websocket
+                // below, since that isn't gated behind this overlay at all).
+                overlayText.textContent = `Loading ${character.name}'s visuals...`;
+
                 // Reconnect the websocket scoped to the new character, so
                 // memory/personality are correctly isolated from here on
                 if (ws) {
@@ -3780,6 +3792,19 @@
             // petState is already tracked in plain JS, we don't need PIXI's
             // hit-testing for the "release" side at all - just "did a pointer
             // go up anywhere while petting was active".
+            //
+            // This function runs on every character switch, so without
+            // removing the previous listener first, every switch permanently
+            // added two more global window listeners that never got cleaned
+            // up - each pointerup/touchend anywhere on the page would then
+            // fire handlePetEnd() once per past switch, and the listener
+            // objects themselves accumulated indefinitely (confirmed real
+            // memory growth over a session with repeated character switches).
+            if (currentPointerUpHandler) {
+                window.removeEventListener('pointerup', currentPointerUpHandler);
+                window.removeEventListener('touchend', currentPointerUpHandler);
+            }
+            currentPointerUpHandler = onPointerUp;
             window.addEventListener('pointerup', onPointerUp);
             window.addEventListener('touchend', onPointerUp);
         }

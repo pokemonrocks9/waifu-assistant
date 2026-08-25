@@ -1390,6 +1390,19 @@
             console.log('Live2DCubismCore:', typeof Live2DCubismCore !== 'undefined' ? '✅ (Cubism 4)' : '❌');
             console.log('Live2D:', typeof Live2D !== 'undefined' ? '✅ (Cubism 2)' : '❌');
             
+            // Cap resolution instead of using raw devicePixelRatio directly -
+            // modern phones commonly report 3x (most iPhones) or higher,
+            // which for a full-screen canvas means rendering at 3x the CSS
+            // pixel dimensions (e.g. a 400x800 viewport becomes a 1200x2400
+            // framebuffer). Desktop GPUs handle that fine; mobile GPUs
+            // (especially mid-range Android) can genuinely struggle with it -
+            // this is a plausible real contributor to the slow/stuck mobile
+            // init we saw, since a WebGL context loss event was observed even
+            // on desktop, and GPU memory pressure is exactly what triggers
+            // that. 2x is still crisp on virtually any real display.
+            const isMobileDevice = window.innerWidth < 768;
+            const cappedResolution = Math.min(window.devicePixelRatio || 1, isMobileDevice ? 2 : 3);
+
             app = new PIXI.Application({
                 view: canvas,
                 width: window.innerWidth,
@@ -1397,9 +1410,33 @@
                 backgroundColor: 0x1a1a2e,
                 backgroundAlpha: 0,
                 antialias: true,
-                resolution: window.devicePixelRatio || 1,
+                resolution: cappedResolution,
                 autoDensity: true
             });
+
+            // No context-loss recovery existed at all before this, despite
+            // having direct evidence (a real "WebGL context was lost" event
+            // in a desktop console log) that it does happen. Mobile GPUs
+            // reclaim context under memory pressure far more aggressively
+            // than desktop, so this matters more there specifically - at
+            // minimum, log what's happening instead of silently hanging with
+            // no visibility into why init is stuck.
+            canvas.addEventListener('webglcontextlost', (e) => {
+                e.preventDefault(); // allows the context to actually be restored, rather than treated as permanently dead
+                console.warn('⚠️ WebGL context lost - attempting to recover automatically');
+            }, false);
+            canvas.addEventListener('webglcontextrestored', () => {
+                console.log('✅ WebGL context restored');
+                // PIXI/pixi-live2d-display don't reliably reconstruct GPU
+                // resources (textures, shaders) after a context restore on
+                // their own - reloading the current character is the most
+                // robust recovery available without much deeper surgery into
+                // their internals.
+                if (currentCharacter) {
+                    console.log('Reloading current character after context restore...');
+                    loadCharacterModel(currentCharacter);
+                }
+            }, false);
 
             // Handle window resize - but ignore height-only changes from mobile keyboard
             // open/close (Android fires a real window resize for this; we only want to

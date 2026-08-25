@@ -63,7 +63,7 @@
             overscroll-behavior: none;
         }
 
-        /* Ambient scan-line texture — the pod's projection field */
+        /* Ambient scan-line texture — the portal's projection field */
         body::before {
             content: '';
             position: fixed;
@@ -812,7 +812,7 @@
     <div id="error"></div>
 
     <div id="status-info">
-        <div>Pod link <span id="pod-version" style="opacity: 0.5; font-size: 8px; margin-left: 4px; font-family: var(--font-mono); border: 1px solid rgba(103, 232, 249, 0.2); padding: 1px 3px; border-radius: 3px;"></span></div>
+        <div>Portal link <span id="pod-version" style="opacity: 0.5; font-size: 8px; margin-left: 4px; font-family: var(--font-mono); border: 1px solid rgba(103, 232, 249, 0.2); padding: 1px 3px; border-radius: 3px;"></span></div>
         <div id="model-status">No model loaded</div>
     </div>
 
@@ -3228,6 +3228,65 @@
         // overlay for the duration (this is a real burn-in - RVC model reload +
         // Ollama warmup on the backend - not an instant switch), then reconnects
         // the websocket scoped to the new character and loads their Live2D model.
+        // Handles a backend-pushed character_switched notification (e.g. a
+        // Telegram-driven handoff) - syncs THIS session's display to match
+        // without re-triggering the backend switch endpoint, since that
+        // already happened. Previously this only took effect on next page
+        // load; this makes an already-open pod display update live instead.
+        async function handleRemoteCharacterSwitch(characterId) {
+            if (currentCharacter && currentCharacter.id === characterId) return; // already showing this character
+
+            const character = CHARACTERS.find(c => c.id === characterId);
+            if (!character) {
+                console.warn(`character_switched notification for unknown character '${characterId}' - ignoring`);
+                return;
+            }
+
+            console.log(`📱 Remote character switch: ${character.name}`);
+
+            const overlay = document.getElementById('character-switch-loading');
+            const overlayText = document.getElementById('character-switch-loading-text');
+            overlay.classList.remove('hidden');
+            overlayText.textContent = `${character.name} is taking over...`;
+
+            document.querySelectorAll('.character-item').forEach(el => {
+                el.classList.toggle('active', el.dataset.characterId === characterId);
+            });
+
+            if (ws) {
+                ws.onclose = null; // don't trigger normal auto-reconnect logic for this deliberate switch
+                ws.close();
+            }
+            connectWebSocket(characterId);
+
+            await loadCharacterModel(character);
+            overlay.classList.add('hidden');
+        }
+
+        // Defense-in-depth alongside the character_switched WebSocket push -
+        // that's the fast/real-time path, but if a broadcast is ever missed
+        // (e.g. this session's websocket happened to be mid-reconnect at the
+        // exact moment it fired), this periodic check catches it anyway
+        // rather than leaving the display stale until a manual refresh.
+        const REMOTE_CHARACTER_CHECK_INTERVAL_MS = 45000;
+        setInterval(async () => {
+            if (!currentCharacter) return; // nothing loaded yet to compare against
+            try {
+                const response = await fetch(`${BACKEND_URL}/api/character/active`, {
+                    signal: AbortSignal.timeout(5000)
+                });
+                if (!response.ok) return;
+                const data = await response.json();
+                if (data.character_id && data.character_id !== currentCharacter.id) {
+                    console.log(`📡 Periodic check found active character changed to '${data.character_id}' - syncing (this should be rare, the websocket push normally handles it instantly)`);
+                    handleRemoteCharacterSwitch(data.character_id);
+                }
+            } catch (err) {
+                // Silent - this is a background best-effort check, not worth
+                // logging noise for every transient network hiccup
+            }
+        }, REMOTE_CHARACTER_CHECK_INTERVAL_MS);
+
         async function switchCharacter(character, summonedByCharacterId = null, handoffReason = null) {
             const overlay = document.getElementById('character-switch-loading');
             const overlayText = document.getElementById('character-switch-loading-text');
@@ -3329,6 +3388,15 @@
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
                 console.log('Received:', data);
+
+                if (data.type === 'character_switched') {
+                    // Pushed by the backend when the active character changes
+                    // from somewhere other than this session (e.g. a
+                    // Telegram-driven handoff) - sync the display live
+                    // instead of only picking it up on next page load.
+                    handleRemoteCharacterSwitch(data.character_id);
+                    return;
+                }
 
                 if (data.type === 'connected') {
                     // Backend tells us upfront whether a greeting is actually
@@ -3998,7 +4066,7 @@
                         document.documentElement.style.setProperty('--kb-height', `${Math.max(0, kbHeight - vv.offsetTop)}px`);
 
                         // 2. Counteract the browser's 'pan' by shifting pinned elements down
-                        // This keeps the Pod Link and Character from sliding off the top
+                        // This keeps the Portal Link and Character from sliding off the top
                         const offset = vv.offsetTop;
                         const pinnedElements = [
                             document.getElementById('status-info'),

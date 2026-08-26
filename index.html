@@ -2731,7 +2731,7 @@
                             // rapid second poke) already set a fresh expression, and
                             // resetting now would incorrectly stomp that fresh one.
                             if (lastExpressionChangeTime <= lipSyncState.speakingStartTime) {
-                                triggerEmotion('neutral');
+                                triggerEmotion(getIdleEmotion());
                             }
                         }
                     }
@@ -3287,6 +3287,27 @@
             }
         }, REMOTE_CHARACTER_CHECK_INTERVAL_MS);
 
+        // Catches the sleep-hours boundary while she's sitting genuinely
+        // idle - the idle-reset call sites above only reapply the correct
+        // idle emotion at their own natural trigger points (end of a
+        // reaction, etc), so without this, someone who leaves her on-screen
+        // showing "neutral" since before 10pm wouldn't visually transition
+        // to "sleeping" until something else happens to trigger a reset.
+        let lastAppliedIdleEmotion = null;
+        const SLEEP_CHECK_INTERVAL_MS = 60000;
+        setInterval(() => {
+            if (!currentCharacter || !currentModel) return;
+            // Don't step on anything actively in progress - conversational
+            // emotion, an active pet gesture, or a poke/LLM reaction in flight
+            if (lipSyncState.isSpeaking || petState.active || interactionsLocked) return;
+
+            const idleEmotion = getIdleEmotion();
+            if (idleEmotion !== lastAppliedIdleEmotion) {
+                lastAppliedIdleEmotion = idleEmotion;
+                triggerEmotion(idleEmotion);
+            }
+        }, SLEEP_CHECK_INTERVAL_MS);
+
         async function switchCharacter(character, summonedByCharacterId = null, handoffReason = null) {
             const overlay = document.getElementById('character-switch-loading');
             const overlayText = document.getElementById('character-switch-loading-text');
@@ -3523,6 +3544,40 @@
 
         let lastExpressionChangeTime = 0;
 
+        // Late-night idle appearance - during sleep hours, her RESTING
+        // expression (whenever nothing else is actively driving it) is
+        // "sleeping" instead of "neutral" - but only if she ALSO hasn't been
+        // genuinely interacted with recently. Talking to her during sleep
+        // hours keeps her "awake" for STAY_AWAKE_MINUTES before she drifts
+        // back off - matches the backend's identical is_currently_asleep()
+        // logic exactly, so the visual state and actual response behavior
+        // (instant vs. wake-up-delayed) always agree.
+        //
+        // Doesn't touch conversational emotion choices at all - if she's
+        // actively happy/sad/whatever mid-conversation, that's untouched;
+        // this only changes what she settles back to once a reaction
+        // naturally expires.
+        const SLEEP_HOUR_START = 22; // 10pm
+        const SLEEP_HOUR_END = 6;    // 6am
+        const STAY_AWAKE_MINUTES = 30;
+        let lastRealInteractionTime = 0; // 0 = "never this session" - correctly defaults to asleep on fresh load during sleep hours
+
+        function isSleepHours() {
+            const hour = new Date().getHours();
+            return hour >= SLEEP_HOUR_START || hour < SLEEP_HOUR_END;
+        }
+        function isCurrentlyAsleep() {
+            if (!isSleepHours()) return false;
+            const minutesSinceInteraction = (Date.now() - lastRealInteractionTime) / 60000;
+            return minutesSinceInteraction > STAY_AWAKE_MINUTES;
+        }
+        function getIdleEmotion() {
+            return isCurrentlyAsleep() ? 'sleeping' : 'neutral';
+        }
+        function markRealInteraction() {
+            lastRealInteractionTime = Date.now();
+        }
+
         function triggerEmotion(emotion) {
             const mode = currentCharacter?.renderMode || 'live2d';
 
@@ -3751,7 +3806,7 @@
             // to ever revert them.
             if (pendingExpressionReset) clearTimeout(pendingExpressionReset);
             pendingExpressionReset = setTimeout(() => {
-                triggerEmotion('neutral');
+                triggerEmotion(getIdleEmotion());
                 pendingExpressionReset = null;
             }, delayMs);
         }
@@ -3760,6 +3815,7 @@
             const now = Date.now();
             if (now - lastTouchTime < TOUCH_COOLDOWN_MS) return;
             lastTouchTime = now;
+            markRealInteraction();
 
             // Cancel any leftover reset timer from a previous poke - otherwise it
             // can fire mid-wait on THIS poke (especially LLM-routed zones, which
@@ -3805,6 +3861,7 @@
 
         function handlePetStart(zone) {
             if (petState.active) return;
+            markRealInteraction();
             if (pendingExpressionReset) {
                 clearTimeout(pendingExpressionReset);
                 pendingExpressionReset = null;
@@ -3835,7 +3892,7 @@
 
             if (duration < PET_HOLD_THRESHOLD_MS) {
                 // Too short for a real reaction - just settle back quietly
-                triggerEmotion('neutral');
+                triggerEmotion(getIdleEmotion());
             } else {
                 // A proper pet - the mid-hold timer already switched her to happy;
                 // she now actually responds, genuinely happy about it
@@ -4003,7 +4060,7 @@
                     // interaction (e.g. another poke) that happened to land within
                     // the same 1-second window and already set its own expression.
                     if (lastExpressionChangeTime <= onendedFiredAt) {
-                        triggerEmotion('neutral');
+                        triggerEmotion(getIdleEmotion());
                     }
                     if (micAlwaysOn) {
                         startListening();
@@ -4214,6 +4271,7 @@
                 if (!text || !isConnected) return;
 
                 console.log('Sending:', text);
+                markRealInteraction();
                 setInteractionsLocked(true);
 
                 ws.send(JSON.stringify({

@@ -819,9 +819,12 @@
             display: none !important;
         }
 
-        /* Settings: debug access bottom-left, mic centered, version
-           bottom-middle, model info and portal link hidden. No text
-           input/send - this device has no keyboard. */
+        /* Settings: pure control panel, no character rendering at all -
+           mic dead-center via flex, a suitcase-handle-style pill at the
+           bottom-center opens the settings panel, version at the top,
+           model info and portal link hidden. No text input/send - this
+           device has no keyboard. */
+        body.view-settings #canvas-container,
         body.view-settings #character-toggle,
         body.view-settings #status-info,
         body.view-settings #text-input,
@@ -835,23 +838,23 @@
             border: none;
             box-shadow: none;
             position: fixed;
-            left: 50%;
-            bottom: 48px;
-            transform: translateX(-50%);
-            width: auto;
+            inset: 0;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         body.view-settings #mic-btn {
-            position: static;
-            width: 72px;
-            height: 72px;
+            width: 96px;
+            height: 96px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
         }
         body.view-settings #mic-btn svg {
-            width: 32px;
-            height: 32px;
+            width: 42px;
+            height: 42px;
         }
         #mic-btn .mic-icon-listening { display: none; }
         #mic-btn.listening .mic-icon-idle { display: none; }
@@ -859,18 +862,28 @@
         #settings-debug-btn {
             display: none;
             position: fixed;
-            left: 20px;
+            left: 50%;
             bottom: 20px;
+            transform: translateX(-50%);
+            width: 64px;
+            height: 28px;
+            border-radius: 14px;
             z-index: 50;
         }
         body.view-settings #settings-debug-btn {
-            display: block;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        #settings-debug-btn svg {
+            width: 20px;
+            height: 20px;
         }
         #settings-version {
             display: none;
             position: fixed;
             left: 50%;
-            bottom: 20px;
+            top: 20px;
             transform: translateX(-50%);
             opacity: 0.5;
             font-size: 11px;
@@ -1188,7 +1201,7 @@
     <!-- Settings view only (see CSS) - debug menu access and version display,
          positioned independently since #character-toggle and #status-info
          are hidden on this view -->
-    <button id="settings-debug-btn" aria-label="Debug menu" title="Debug menu">⚙️</button>
+    <button id="settings-debug-btn" aria-label="Open settings" title="Open settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M5 15l7-7 7 7"/></svg></button>
     <div id="settings-version"></div>
 
     <!-- Text input -->
@@ -1658,13 +1671,26 @@
             // "hover" state - once your finger lifts, nothing else updates
             // mouseX/mouseY, so it was staying frozen at the last touch
             // point indefinitely. Reset to neutral on release.
+            //
+            // Uses capture phase (the `true` third arg) rather than the
+            // default bubble phase - confirmed this was needed: taps that
+            // land ON the character reset fine (handlePoke/handlePetStart
+            // reset gaze themselves, inline, independent of this listener),
+            // but taps on empty canvas space relied ENTIRELY on this
+            // listener and were getting stuck. PIXI's own touch handling on
+            // the canvas likely calls stopPropagation() during the normal
+            // bubble phase, which would prevent a bubble-phase window
+            // listener from ever seeing canvas-originated touch events.
+            // Capture-phase listeners fire BEFORE the event reaches the
+            // canvas at all, so no stopPropagation() called afterward can
+            // block this from running.
             const resetGazeOnTouchEnd = () => {
                 if (gazeLocked) return; // don't fight an active mic-gaze reaction
                 mouseX = 0;
                 mouseY = 0;
             };
-            window.addEventListener('touchend', resetGazeOnTouchEnd);
-            window.addEventListener('touchcancel', resetGazeOnTouchEnd);
+            window.addEventListener('touchend', resetGazeOnTouchEnd, true);
+            window.addEventListener('touchcancel', resetGazeOnTouchEnd, true);
 
             console.log('PIXI initialized');
         }
@@ -3151,6 +3177,14 @@
                         positionDisplay.style.display = 'none';
                     }
 
+                    if (document.body.classList.contains('view-settings')) {
+                        // Settings has no visible character to actually
+                        // switch/load - relay the intent to kiosk instead of
+                        // performing a pointless invisible local switch.
+                        syncChannel?.postMessage({ type: 'remote-switch-character', characterId: char.id });
+                        return;
+                    }
+
                     setTimeout(() => {
                         switchCharacter(char).then(() => {
                             updateSliders(char);
@@ -3225,40 +3259,49 @@
 
             // Update display values and model in real-time
             function updateModel() {
-                if (!currentModel || !currentCharacter) return;
-                
+                if (!currentCharacter) return;
+
                 const scale = parseFloat(scaleSlider.value);
                 const x = parseFloat(xSlider.value);
                 const y = parseFloat(ySlider.value);
-                
+
                 // Update displayed values
                 scaleValue.textContent = scale.toFixed(2);
                 xValue.textContent = x.toFixed(2);
                 yValue.textContent = y.toFixed(2);
-                
-                // Check if we're on mobile
-                const isMobile = window.innerWidth < 768;
-                
-                // Update character config temporarily
-                if (isMobile && currentCharacter.scaleMobile !== undefined) {
-                    // Update mobile-specific values
-                    currentCharacter.scaleMobile = scale;
-                    if (currentCharacter.positionMobile) {
-                        currentCharacter.positionMobile.x = x;
-                        currentCharacter.positionMobile.y = y;
+
+                if (document.body.classList.contains('view-settings')) {
+                    // No visible character here to reposition - relay to
+                    // kiosk, which applies this to its own model using its
+                    // own screen's mobile/desktop check (the two are
+                    // separate physical screens, so settings' own width
+                    // isn't necessarily representative of kiosk's).
+                    syncChannel?.postMessage({ type: 'remote-position-update', scale, x, y });
+                } else if (currentModel) {
+                    // Check if we're on mobile
+                    const isMobile = window.innerWidth < 768;
+
+                    // Update character config temporarily
+                    if (isMobile && currentCharacter.scaleMobile !== undefined) {
+                        // Update mobile-specific values
+                        currentCharacter.scaleMobile = scale;
+                        if (currentCharacter.positionMobile) {
+                            currentCharacter.positionMobile.x = x;
+                            currentCharacter.positionMobile.y = y;
+                        } else {
+                            currentCharacter.positionMobile = { x, y };
+                        }
                     } else {
-                        currentCharacter.positionMobile = { x, y };
+                        // Update desktop values
+                        currentCharacter.scale = scale;
+                        currentCharacter.position.x = x;
+                        currentCharacter.position.y = y;
                     }
-                } else {
-                    // Update desktop values
-                    currentCharacter.scale = scale;
-                    currentCharacter.position.x = x;
-                    currentCharacter.position.y = y;
+
+                    // Reposition model
+                    positionModel(currentModel, currentCharacter);
                 }
-                
-                // Reposition model
-                positionModel(currentModel, currentCharacter);
-                
+
                 // Show position display
                 positionDisplay.textContent = `scale: ${scale.toFixed(2)}  |  x: ${x.toFixed(2)}  |  y: ${y.toFixed(2)}`;
                 
@@ -3671,13 +3714,24 @@
                     // speaking her handoff line, never mid-sentence
                     pendingCharacterSwitch = data.switch_to || null;
                     pendingSwitchReason = data.switch_reason || null;
-                    
-                    // Request TTS
-                    ws.send(JSON.stringify({
-                        type: 'tts',
-                        text: data.text,
-                        voice: 'compa'
-                    }));
+
+                    if (document.body.classList.contains('view-settings')) {
+                        // Settings has no character/lip sync to actually drive -
+                        // defer the real speech to kiosk via broadcast instead
+                        // of requesting our own TTS. Stays locked (already set
+                        // above) until kiosk signals it's actually finished
+                        // speaking (see syncChannel handler below) - the
+                        // generic 20s safety timeout in setInteractionsLocked
+                        // covers the case where no kiosk tab is open at all.
+                        syncChannel?.postMessage({ type: 'speak-request', text: data.text, emotion: data.emotion });
+                    } else {
+                        // Request TTS
+                        ws.send(JSON.stringify({
+                            type: 'tts',
+                            text: data.text,
+                            voice: 'compa'
+                        }));
+                    }
                 } else if (data.type === 'audio') {
                     // Play audio and trigger lip sync
                     playAudioWithLipSync(data.data);
@@ -3850,11 +3904,90 @@
                 if (event.data?.type === 'mic-listening-start') {
                     lookTowardTopRight();
                     showListeningIndicator();
+                    // Settings' own recognition never actually runs anymore
+                    // (see remote-mic-trigger below) - its mic button's
+                    // visual state is entirely driven by these broadcasts
+                    // from whichever page (now always kiosk) is really
+                    // listening.
+                    if (document.body.classList.contains('view-settings')) {
+                        document.getElementById('mic-btn')?.classList.add('listening');
+                    }
                 } else if (event.data?.type === 'mic-listening-stop') {
                     resetGaze();
                     hideListeningIndicator();
+                    if (document.body.classList.contains('view-settings')) {
+                        document.getElementById('mic-btn')?.classList.remove('listening');
+                    }
+                } else if (event.data?.type === 'remote-mic-trigger') {
+                    // Settings relayed a mic button press - kiosk owns the
+                    // actual recognition instance and the entire listen/
+                    // send/respond lifecycle on its own single connection.
+                    if (document.body.classList.contains('view-kiosk')) {
+                        if (isListening) {
+                            recognition.stop();
+                        } else {
+                            startListening();
+                        }
+                    }
+                } else if (event.data?.type === 'speak-request') {
+                    // Settings has no character to actually speak through -
+                    // only kiosk acts on this.
+                    if (document.body.classList.contains('view-kiosk')) {
+                        handleRemoteSpeakRequest(event.data.text, event.data.emotion);
+                    }
+                } else if (event.data?.type === 'kiosk-speaking-start') {
+                    if (document.body.classList.contains('view-settings')) {
+                        setInteractionsLocked(true); // already locked from the speak-request send, but ensures correctness regardless of ordering
+                    }
+                } else if (event.data?.type === 'kiosk-speaking-end') {
+                    if (document.body.classList.contains('view-settings')) {
+                        setInteractionsLocked(false);
+                    }
+                } else if (event.data?.type === 'remote-switch-character') {
+                    // Settings relayed a character selection - kiosk is the
+                    // one with a visible model to actually switch/load.
+                    if (document.body.classList.contains('view-kiosk')) {
+                        const target = CHARACTERS.find(c => c.id === event.data.characterId);
+                        if (target) {
+                            switchCharacter(target).then(() => updateSliders(target));
+                        } else {
+                            console.warn(`remote-switch-character: unknown character '${event.data.characterId}'`);
+                        }
+                    }
+                } else if (event.data?.type === 'remote-position-update') {
+                    // Settings relayed a slider change - apply it to kiosk's
+                    // own model, using kiosk's own mobile/desktop check
+                    // (the two are separate physical screens).
+                    if (document.body.classList.contains('view-kiosk') && currentModel && currentCharacter) {
+                        const { scale, x, y } = event.data;
+                        const isMobile = window.innerWidth < 768;
+                        if (isMobile && currentCharacter.scaleMobile !== undefined) {
+                            currentCharacter.scaleMobile = scale;
+                            if (currentCharacter.positionMobile) {
+                                currentCharacter.positionMobile.x = x;
+                                currentCharacter.positionMobile.y = y;
+                            } else {
+                                currentCharacter.positionMobile = { x, y };
+                            }
+                        } else {
+                            currentCharacter.scale = scale;
+                            currentCharacter.position.x = x;
+                            currentCharacter.position.y = y;
+                        }
+                        positionModel(currentModel, currentCharacter);
+                    }
                 }
             };
+        }
+
+        // Speaks text that arrived via broadcast from another same-device
+        // tab (settings) rather than from this page's own websocket -
+        // reuses the same TTS-fetch-and-play path as speakDirectly, just
+        // with the emotion applied first since speakDirectly only handles
+        // audio, not expression.
+        async function handleRemoteSpeakRequest(text, emotion) {
+            if (emotion) triggerEmotion(emotion);
+            await speakDirectly(text);
         }
 
         // Multi-stage sleep/wake animation via direct Cubism parameter
@@ -4431,9 +4564,21 @@
             const speakBtn = document.getElementById('speak-btn');
 
             audio.play().then(() => {
-                if (thisPlaybackId !== activePlaybackId) return; // superseded before it even started
+                // No supersede-check here (unlike onended below) - if THIS
+                // audio is genuinely about to make sound, lip sync should
+                // start for it regardless of whether a newer response's
+                // playAudioWithLipSync call already happened - skipping lip
+                // sync because of that was the actual cause of intermittent
+                // "she responds but doesn't move her mouth" (confirmed:
+                // audio.play() had already been called and would produce
+                // real sound either way, so not animating it was strictly
+                // worse than animating a "superseded" one).
                 speakBtn.classList.add('speaking');
                 speakBtn.textContent = '🔊';
+
+                if (document.body.classList.contains('view-kiosk')) {
+                    syncChannel?.postMessage({ type: 'kiosk-speaking-start' });
+                }
 
                 // Only start lip sync once playback has ACTUALLY begun - doing
                 // this on 'loadedmetadata' instead (which fires before real
@@ -4449,6 +4594,9 @@
                 // Don't leave the button stuck showing "speaking" if playback never started
                 speakBtn.classList.remove('speaking');
                 speakBtn.textContent = 'Send';
+                if (document.body.classList.contains('view-kiosk')) {
+                    syncChannel?.postMessage({ type: 'kiosk-speaking-end' });
+                }
             });
 
             audio.onended = () => {
@@ -4460,6 +4608,10 @@
                 speakBtn.classList.remove('speaking');
                 speakBtn.textContent = 'Send';
                 setInteractionsLocked(false);
+
+                if (document.body.classList.contains('view-kiosk')) {
+                    syncChannel?.postMessage({ type: 'kiosk-speaking-end' });
+                }
 
                 // If a character switch was flagged on this response, she's
                 // now genuinely done saying her handoff line - perform the
@@ -4665,6 +4817,15 @@
             };
 
             micBtn.addEventListener('click', () => {
+                if (document.body.classList.contains('view-settings')) {
+                    // Settings is a remote control now - kiosk owns the
+                    // entire listen/send/respond lifecycle on its own single
+                    // connection. This just relays the button press; this
+                    // button's own visual state (listening class) is driven
+                    // by broadcasts FROM kiosk, not by anything local here.
+                    syncChannel?.postMessage({ type: 'remote-mic-trigger' });
+                    return;
+                }
                 if (isListening) {
                     recognition.stop();
                 } else {

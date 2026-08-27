@@ -2771,40 +2771,39 @@
             app.ticker.add(currentModelTickerFn);
         }
 
+        let easedGazeX = 0, easedGazeY = 0; // -1 to 1 range, eased toward mouseX/mouseY each frame
+
         function updateEyeTracking(model) {
-            try {
-                const coreModel = model.internalModel.coreModel;
-                const parameters = coreModel.parameters;
-                
-                // Common Live2D eye parameters
-                const eyeParams = [
-                    'ParamAngleX',
-                    'ParamAngleY',
-                    'ParamEyeBallX',
-                    'ParamEyeBallY'
-                ];
+            const core = model?.internalModel?.coreModel;
+            if (!core || typeof core.setParameterValueById !== 'function') return;
 
-                // Smooth eye movement
-                const eyeX = mouseX * 30; // Scale to appropriate range
-                const eyeY = mouseY * 30;
+            // Was directly mutating a raw parameters.values[i] array before,
+            // which doesn't actually commit correctly in this library
+            // (confirmed: every other working parameter write in this file -
+            // lip sync, the sleep/wake animation - uses setParameterValueById
+            // instead, never raw array indexing). Also fixes a real range
+            // bug: ParamAngleX/Y (head angle, ~±30 degrees) and
+            // ParamEyeBallX/Y (eyeball position, ~±1 normalized) were both
+            // being fed the identical over-scaled value, which would have
+            // pinned the eyeball parameters at their clamped max/min
+            // regardless of actual cursor position even if the write itself
+            // had worked.
+            easedGazeX += (mouseX - easedGazeX) * 0.1;
+            easedGazeY += (mouseY - easedGazeY) * 0.1;
 
-                for (let i = 0; i < parameters.count; i++) {
-                    const paramId = parameters.ids[i];
-                    
-                    if (eyeParams.includes(paramId)) {
-                        const current = parameters.values[i];
-                        let target = 0;
-                        
-                        if (paramId.includes('X')) target = eyeX;
-                        if (paramId.includes('Y')) target = eyeY;
-                        
-                        // Smooth interpolation
-                        const smoothed = current + (target - current) * 0.1;
-                        parameters.values[i] = smoothed;
-                    }
+            const writes = [
+                ['ParamAngleX', easedGazeX * 30],
+                ['ParamAngleY', easedGazeY * 30],
+                ['ParamEyeBallX', easedGazeX],
+                ['ParamEyeBallY', easedGazeY],
+            ];
+            for (const [paramId, value] of writes) {
+                try {
+                    core.setParameterValueById(paramId, value);
+                } catch (err) {
+                    // This specific param doesn't exist on this model - skip
+                    // just this one, don't abort the rest.
                 }
-            } catch (error) {
-                // Parameters might not exist, that's okay
             }
         }
 

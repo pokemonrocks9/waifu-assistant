@@ -1496,6 +1496,7 @@
         // Mouse tracking
         let mouseX = 0;
         let mouseY = 0;
+        let gazeLocked = false; // true while a forced gaze (mic-listening reaction) is holding mouseX/mouseY - blocks real cursor/touch input from overwriting it
 
         // Gates mobile touch-based gaze tracking to only apply when she's
         // genuinely idle - not mid-pet, mid-poke, or mid-conversation.
@@ -1589,17 +1590,19 @@
                 }
             });
 
-            // Mouse tracking for gaze
+            // Mouse tracking for gaze - gated by gazeLocked so a forced gaze
+            // (mic-listening reaction) can't be overwritten by real cursor
+            // movement while it's active.
             window.addEventListener('mousemove', (event) => {
+                if (gazeLocked) return;
                 mouseX = (event.clientX / window.innerWidth) * 2 - 1;
                 mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
             });
 
             // Touch tracking for mobile - only follows your finger while
             // she's otherwise idle (not petting, poking, or mid-conversation).
-            // Desktop mouse tracking above stays continuous/unconditional;
-            // this gate is mobile-specific.
             window.addEventListener('touchmove', (event) => {
+                if (gazeLocked) return;
                 if (event.touches.length > 0 && isMobileGazeTrackingActive()) {
                     const touch = event.touches[0];
                     mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
@@ -2768,10 +2771,7 @@
             app.ticker.add(currentModelTickerFn);
         }
 
-        let eyeTrackingSuppressed = false;
-
         function updateEyeTracking(model) {
-            if (eyeTrackingSuppressed) return; // mic-gaze reaction is holding the eyes right now - don't fight it
             try {
                 const coreModel = model.internalModel.coreModel;
                 const parameters = coreModel.parameters;
@@ -3763,30 +3763,25 @@
         // rather than something needing custom pacing.
         function lookTowardTopRight() {
             if (!currentModel || currentCharacter?.renderMode === 'mmd') return;
-            const canvas = document.getElementById('live2d-canvas');
-            if (!canvas) return;
-            eyeTrackingSuppressed = true; // hold this gaze - don't let continuous cursor/touch tracking fight it
-            const rect = canvas.getBoundingClientRect();
-            const x = rect.left + rect.width * 0.85;
-            const y = rect.top + rect.height * 0.15;
-            try {
-                currentModel.focus(x, y);
-            } catch (err) {
-                // focus() not available on this model/render mode - harmless, just skip
-            }
+            // Drives the same mouseX/mouseY mechanism updateEyeTracking
+            // already uses for cursor/touch tracking, rather than
+            // model.focus() - that call turned out to set a target on the
+            // model's own internal focus controller that persists
+            // indefinitely (doesn't expire or get cleared by inaction), which
+            // fought unpredictably with updateEyeTracking's own writes and
+            // caused a stuck-looking-up regression. Using ONE system for all
+            // gaze behavior (cursor tracking, touch tracking, pet/poke
+            // recenter, and this) avoids two separate mechanisms fighting
+            // over the same parameters ever again.
+            gazeLocked = true; // blocks real cursor/touch input from overwriting this while listening
+            mouseX = 0.7;  // right
+            mouseY = 0.7;  // up (mouseY convention here: positive = up, per the existing mousemove formula)
         }
         function resetGaze() {
             if (!currentModel || currentCharacter?.renderMode === 'mmd') return;
-            // Not using .focus() here - its coordinate guess for "neutral"
-            // (canvas center) turned out not to actually correspond to her
-            // true resting eye-level (confirmed: Y stayed looking up even
-            // after "resetting" to canvas-center). Instead, defer to the
-            // app's own already-correct definition of neutral - mouseX/
-            // mouseY = 0 is what the continuous cursor/touch tracking (and
-            // the pet/poke gaze-recenter) already treats as "straight ahead."
-            eyeTrackingSuppressed = false; // hand control back to continuous cursor/touch tracking
             mouseX = 0;
             mouseY = 0;
+            gazeLocked = false; // hand control back to real cursor/touch input
         }
 
         // Cross-tab sync for kiosk + settings running on the same device -

@@ -840,6 +840,7 @@
             position: fixed;
             inset: 0;
             width: 100%;
+            transform: none;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -869,6 +870,16 @@
             height: 28px;
             border-radius: 14px;
             z-index: 50;
+            background: var(--panel);
+            border: 1px solid var(--hairline);
+            color: var(--cyan);
+            cursor: pointer;
+            backdrop-filter: blur(16px);
+            transition: all 0.2s;
+        }
+        #settings-debug-btn:hover {
+            border-color: var(--cyan-dim);
+            background: rgba(103, 232, 249, 0.08);
         }
         body.view-settings #settings-debug-btn {
             display: flex;
@@ -894,6 +905,24 @@
             z-index: 50;
         }
         body.view-settings #settings-version {
+            display: block;
+        }
+
+        #kiosk-disconnected-indicator {
+            display: none;
+            position: fixed;
+            right: 20px;
+            bottom: 20px;
+            width: 32px;
+            height: 32px;
+            z-index: 50;
+            filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.5));
+        }
+        #kiosk-disconnected-indicator svg {
+            width: 100%;
+            height: 100%;
+        }
+        body.view-settings #kiosk-disconnected-indicator.visible {
             display: block;
         }
 
@@ -1203,6 +1232,13 @@
          are hidden on this view -->
     <button id="settings-debug-btn" aria-label="Open settings" title="Open settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M5 15l7-7 7 7"/></svg></button>
     <div id="settings-version"></div>
+    <div id="kiosk-disconnected-indicator" aria-label="Kiosk not detected" title="Kiosk not detected">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="11" fill="rgba(239, 68, 68, 0.15)" stroke="#ef4444" stroke-width="1.5"/>
+            <path d="M12 7v6" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round"/>
+            <circle cx="12" cy="16.5" r="1.1" fill="#ef4444"/>
+        </svg>
+    </div>
 
     <!-- Text input -->
     <div id="text-input-container">
@@ -3899,8 +3935,22 @@
         // same-device only - if the other page isn't open (or is on a
         // different device entirely), messages just go nowhere, no error.
         const syncChannel = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('cpupod-sync') : null;
+        let lastKioskPongTime = 0;
         if (syncChannel) {
             syncChannel.onmessage = (event) => {
+                if (event.data?.type === 'kiosk-presence-ping') {
+                    // BroadcastChannel has no built-in delivery confirmation -
+                    // this is what actually lets settings detect whether
+                    // kiosk is genuinely open and listening, not just assume
+                    // the channel works.
+                    if (document.body.classList.contains('view-kiosk')) {
+                        syncChannel.postMessage({ type: 'kiosk-presence-pong' });
+                    }
+                    return;
+                } else if (event.data?.type === 'kiosk-presence-pong') {
+                    lastKioskPongTime = Date.now();
+                    return;
+                }
                 if (event.data?.type === 'mic-listening-start') {
                     lookTowardTopRight();
                     showListeningIndicator();
@@ -3978,6 +4028,22 @@
                     }
                 }
             };
+        }
+
+        // Heartbeat, settings-side only: periodically pings for kiosk's
+        // presence and shows a red indicator if no pong has arrived
+        // recently. Generous stale threshold (a bit over 2x the ping
+        // interval) so a single missed cycle doesn't falsely flag it.
+        const KIOSK_PING_INTERVAL_MS = 3000;
+        const KIOSK_STALE_THRESHOLD_MS = 7000;
+        if (syncChannel && document.body.classList.contains('view-settings')) {
+            setInterval(() => syncChannel.postMessage({ type: 'kiosk-presence-ping' }), KIOSK_PING_INTERVAL_MS);
+            setInterval(() => {
+                const indicator = document.getElementById('kiosk-disconnected-indicator');
+                if (!indicator) return;
+                const stale = (Date.now() - lastKioskPongTime) > KIOSK_STALE_THRESHOLD_MS;
+                indicator.classList.toggle('visible', stale);
+            }, 1000);
         }
 
         // Speaks text that arrived via broadcast from another same-device
@@ -4820,9 +4886,17 @@
                 if (document.body.classList.contains('view-settings')) {
                     // Settings is a remote control now - kiosk owns the
                     // entire listen/send/respond lifecycle on its own single
-                    // connection. This just relays the button press; this
-                    // button's own visual state (listening class) is driven
-                    // by broadcasts FROM kiosk, not by anything local here.
+                    // connection. This just relays the button press.
+                    //
+                    // Also toggles the visual state locally, optimistically -
+                    // otherwise the button never visibly responds at all
+                    // unless a kiosk tab is actually open and broadcasting
+                    // confirmation back (which won't be true yet, e.g. during
+                    // standalone testing before the physical kiosk display
+                    // exists). Kiosk's own mic-listening-start/stop
+                    // broadcasts (already wired above) will correct this
+                    // if kiosk's real state ever ends up different.
+                    micBtn.classList.toggle('listening');
                     syncChannel?.postMessage({ type: 'remote-mic-trigger' });
                     return;
                 }

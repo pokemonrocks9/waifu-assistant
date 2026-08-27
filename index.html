@@ -883,12 +883,45 @@
         body.view-settings #settings-version {
             display: block;
         }
+
+        #listening-indicator {
+            position: absolute;
+            top: 12%;
+            right: 10%;
+            width: 40px;
+            height: 40px;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateY(0);
+            transition: opacity 0.3s ease;
+            z-index: 20;
+            filter: drop-shadow(0 0 6px rgba(103, 232, 249, 0.5));
+        }
+        #listening-indicator.visible {
+            opacity: 1;
+            animation: listening-indicator-float 1.8s ease-in-out infinite;
+        }
+        #listening-indicator svg {
+            width: 100%;
+            height: 100%;
+        }
+        @keyframes listening-indicator-float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-8px); }
+        }
     </style>
 </head>
 <body>
     <div id="canvas-container">
         <canvas id="live2d-canvas"></canvas>
         <canvas id="mmd-canvas" style="display: none;"></canvas>
+        <div id="listening-indicator">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="11" fill="rgba(103, 232, 249, 0.15)" stroke="var(--cyan)" stroke-width="1.5"/>
+                <path d="M9 9a3 3 0 1 1 4 2.83c-.6.2-1 .77-1 1.42V14" stroke="var(--cyan)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="12" cy="17.5" r="1" fill="var(--cyan)"/>
+            </svg>
+        </div>
     </div>
 
     <div id="loading">
@@ -1609,6 +1642,19 @@
                     mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
                 }
             });
+
+            // Unlike mouse (which continuously updates via mousemove and
+            // naturally settles wherever the cursor rests), touch has no
+            // "hover" state - once your finger lifts, nothing else updates
+            // mouseX/mouseY, so it was staying frozen at the last touch
+            // point indefinitely. Reset to neutral on release.
+            const resetGazeOnTouchEnd = () => {
+                if (gazeLocked) return; // don't fight an active mic-gaze reaction
+                mouseX = 0;
+                mouseY = 0;
+            };
+            window.addEventListener('touchend', resetGazeOnTouchEnd);
+            window.addEventListener('touchcancel', resetGazeOnTouchEnd);
 
             console.log('PIXI initialized');
         }
@@ -2773,24 +2819,9 @@
 
         let easedGazeX = 0, easedGazeY = 0; // -1 to 1 range, eased toward mouseX/mouseY each frame
 
-        let lastEyeTrackDebugLog = 0;
-
         function updateEyeTracking(model) {
             const core = model?.internalModel?.coreModel;
-
-            // TEMPORARY diagnostics - throttled to roughly once/second so the
-            // console stays readable. Logs exactly where this breaks: is
-            // mouseX/mouseY actually changing? does core/setParameterValueById
-            // exist? does the value actually stick, or does something else
-            // (idle motion, physics) override it after we write it?
-            const now = Date.now();
-            const shouldLog = now - lastEyeTrackDebugLog > 1000;
-            if (shouldLog) lastEyeTrackDebugLog = now;
-
-            if (!core || typeof core.setParameterValueById !== 'function') {
-                if (shouldLog) console.warn('👁️ EYE TRACK DEBUG: no core or setParameterValueById - core exists:', !!core, 'model:', !!model, 'internalModel:', !!model?.internalModel);
-                return;
-            }
+            if (!core || typeof core.setParameterValueById !== 'function') return;
 
             easedGazeX += (mouseX - easedGazeX) * 0.1;
             easedGazeY += (mouseY - easedGazeY) * 0.1;
@@ -2801,21 +2832,13 @@
                 ['ParamEyeBallX', easedGazeX],
                 ['ParamEyeBallY', easedGazeY],
             ];
-            const results = [];
             for (const [paramId, value] of writes) {
                 try {
                     core.setParameterValueById(paramId, value);
-                    let readBack = 'n/a';
-                    if (typeof core.getParameterValueById === 'function') {
-                        try { readBack = core.getParameterValueById(paramId); } catch (e2) { readBack = 'read-error'; }
-                    }
-                    results.push(`${paramId}: set=${value.toFixed(2)} readback=${readBack}`);
                 } catch (err) {
-                    results.push(`${paramId}: WRITE FAILED (${err.message})`);
+                    // This specific param doesn't exist on this model - skip
+                    // just this one, don't abort the rest.
                 }
-            }
-            if (shouldLog) {
-                console.log(`👁️ EYE TRACK DEBUG: mouseX=${mouseX.toFixed(2)} mouseY=${mouseY.toFixed(2)} gazeLocked=${gazeLocked} | ${results.join(' | ')}`);
             }
         }
 
@@ -3795,6 +3818,16 @@
             gazeLocked = false; // hand control back to real cursor/touch input
         }
 
+        // Generic listening indicator - not tied specifically to the mic
+        // button, so it can be reused later for an on-device wake-word
+        // trigger without any changes needed here.
+        function showListeningIndicator() {
+            document.getElementById('listening-indicator')?.classList.add('visible');
+        }
+        function hideListeningIndicator() {
+            document.getElementById('listening-indicator')?.classList.remove('visible');
+        }
+
         // Cross-tab sync for kiosk + settings running on the same device -
         // e.g. mic lives on the settings screen, but the character is shown
         // on the kiosk screen, so pressing mic there needs to make the
@@ -3806,8 +3839,10 @@
             syncChannel.onmessage = (event) => {
                 if (event.data?.type === 'mic-listening-start') {
                     lookTowardTopRight();
+                    showListeningIndicator();
                 } else if (event.data?.type === 'mic-listening-stop') {
                     resetGaze();
+                    hideListeningIndicator();
                 }
             };
         }
@@ -4584,6 +4619,7 @@
                 micBtn.classList.add('listening');
                 textInput.placeholder = 'Listening...';
                 lookTowardTopRight();
+                showListeningIndicator();
                 syncChannel?.postMessage({ type: 'mic-listening-start' });
             };
 
@@ -4614,6 +4650,7 @@
                 micBtn.classList.remove('listening');
                 textInput.placeholder = `Say something to ${currentCharacter?.name || ''}…`;
                 resetGaze();
+                hideListeningIndicator();
                 syncChannel?.postMessage({ type: 'mic-listening-stop' });
             };
 

@@ -886,16 +886,16 @@
 
         #listening-indicator {
             position: absolute;
-            top: 12%;
-            right: 10%;
-            width: 40px;
-            height: 40px;
+            top: 10%;
+            right: 8%;
+            width: 56px;
+            height: 56px;
             opacity: 0;
             pointer-events: none;
             transform: translateY(0);
             transition: opacity 0.3s ease;
             z-index: 20;
-            filter: drop-shadow(0 0 6px rgba(103, 232, 249, 0.5));
+            filter: drop-shadow(0 0 8px rgba(244, 114, 182, 0.6));
         }
         #listening-indicator.visible {
             opacity: 1;
@@ -917,9 +917,9 @@
         <canvas id="mmd-canvas" style="display: none;"></canvas>
         <div id="listening-indicator">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="11" fill="rgba(103, 232, 249, 0.15)" stroke="var(--cyan)" stroke-width="1.5"/>
-                <path d="M9 9a3 3 0 1 1 4 2.83c-.6.2-1 .77-1 1.42V14" stroke="var(--cyan)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                <circle cx="12" cy="17.5" r="1" fill="var(--cyan)"/>
+                <circle cx="12" cy="12" r="11" fill="rgba(244, 114, 182, 0.15)" stroke="var(--magenta)" stroke-width="1.5"/>
+                <path d="M9 9a3 3 0 1 1 4 2.83c-.6.2-1 .77-1 1.42V14" stroke="var(--magenta)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="12" cy="17.5" r="1" fill="var(--magenta)"/>
             </svg>
         </div>
     </div>
@@ -951,6 +951,16 @@
     <!-- Character selection menu -->
     <div id="character-menu">
         <h2>Select character</h2>
+
+        <!-- Views Section -->
+        <div class="settings-section">
+            <h3>Views</h3>
+            <p style="font-size: 12px; opacity: 0.6; margin: 0 0 10px;">Opens in a new tab - these are meant to run as separate displays.</p>
+            <div style="display: flex; gap: 8px;">
+                <a href="#kiosk" target="_blank" class="btn secondary" style="flex: 1; text-align: center; text-decoration: none;">Kiosk view</a>
+                <a href="#settings" target="_blank" class="btn secondary" style="flex: 1; text-align: center; text-decoration: none;">Settings view</a>
+            </div>
+        </div>
 
         <!-- Settings Section -->
         <div class="settings-section">

@@ -3755,6 +3755,7 @@
                 triggerEmotion('sleeping');
                 if (onComplete) onComplete();
             }, false); // keep auto-blink suppressed - she should stay visually asleep
+        }
 
         function triggerEmotion(emotion) {
             const mode = currentCharacter?.renderMode || 'live2d';

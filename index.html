@@ -877,6 +877,20 @@
                 </div>
             </div>
 
+            <!-- Sleep/wake animation testing - lets these be checked on demand
+                 instead of waiting for real clock time or 30 real minutes of
+                 inactivity to actually see them. -->
+            <div class="settings-section">
+                <h3>Sleep / wake testing</h3>
+                <p class="form-hint mb-2">Trigger these on demand instead of waiting for real sleep hours or inactivity.</p>
+
+                <div class="control-group" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    <button id="test-sleep-static-btn" class="btn secondary">Show sleeping (static)</button>
+                    <button id="test-go-to-sleep-btn" class="btn secondary">Play go-to-sleep animation</button>
+                    <button id="test-wake-up-btn" class="btn secondary">Play wake-up animation</button>
+                </div>
+            </div>
+
             <!-- Live voice tuning - test values before hardcoding them into
                  CHARACTERS. Doesn't persist anything, purely for testing. -->
             <div class="settings-section">
@@ -1630,6 +1644,17 @@
             });
             // Rebuild the panel so slider positions/labels reflect the reset values
             setupMMDBonePanel();
+        });
+
+        document.getElementById('test-sleep-static-btn').addEventListener('click', () => {
+            cancelSleepWakeAnimation();
+            triggerEmotion('sleeping');
+        });
+        document.getElementById('test-go-to-sleep-btn').addEventListener('click', () => {
+            playGoToSleepAnimation();
+        });
+        document.getElementById('test-wake-up-btn').addEventListener('click', () => {
+            playWakeUpAnimation();
         });
 
         document.getElementById('toggle-mmd-lighting').addEventListener('change', (e) => {
@@ -3303,8 +3328,19 @@
 
             const idleEmotion = getIdleEmotion();
             if (idleEmotion !== lastAppliedIdleEmotion) {
+                const previousIdleEmotion = lastAppliedIdleEmotion;
                 lastAppliedIdleEmotion = idleEmotion;
-                triggerEmotion(idleEmotion);
+                if (idleEmotion === 'sleeping' && previousIdleEmotion !== null) {
+                    // Drifting off while genuinely idle (30 min since the last
+                    // real interaction) - play the animated close rather than
+                    // an instant snap. previousIdleEmotion !== null skips this
+                    // on the very first check after page load, where an
+                    // instant initial state is correct, not an animation from
+                    // nothing.
+                    playGoToSleepAnimation();
+                } else {
+                    triggerEmotion(idleEmotion);
+                }
             }
         }, SLEEP_CHECK_INTERVAL_MS);
 
@@ -3575,7 +3611,112 @@
             return isCurrentlyAsleep() ? 'sleeping' : 'neutral';
         }
         function markRealInteraction() {
+            const wasAsleep = isCurrentlyAsleep();
             lastRealInteractionTime = Date.now();
+            if (wasAsleep) {
+                playWakeUpAnimation();
+            }
+        }
+
+        // Multi-stage sleep/wake animation via direct Cubism parameter
+        // tweening - PIXI Live2D's built-in expression() crossfade is fast
+        // (a few hundred ms) and not something we can slow down through that
+        // API, so a genuinely slow "waking up" needs manual animation
+        // instead. Uses the standard Cubism eye-open parameter naming
+        // convention (ParamEyeLOpen/ParamEyeROpen) - very likely correct for
+        // a standard-rigged model, but if this doesn't visibly do anything,
+        // check the raw parameter debug panel for the actual param IDs on
+        // these specific models and update EYE_OPEN_PARAM_IDS below.
+        const EYE_OPEN_PARAM_IDS = ['ParamEyeLOpen', 'ParamEyeROpen'];
+
+        function setEyeOpenAmount(amount) {
+            const core = currentModel?.internalModel?.coreModel;
+            if (!core) return;
+            for (const paramId of EYE_OPEN_PARAM_IDS) {
+                try {
+                    core.setParameterValueById(paramId, amount);
+                } catch (err) {
+                    // Param doesn't exist on this model - silently skip, the
+                    // expression-level sleeping/neutral swap still applies
+                    // as a fallback either way.
+                }
+            }
+        }
+
+        function easeInOutQuad(t) {
+            return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        }
+
+        let sleepWakeAnimationFrame = null;
+        function cancelSleepWakeAnimation() {
+            if (sleepWakeAnimationFrame) {
+                cancelAnimationFrame(sleepWakeAnimationFrame);
+                sleepWakeAnimationFrame = null;
+            }
+        }
+
+        function runStagedEyeAnimation(stages, durationMs, onComplete) {
+            cancelSleepWakeAnimation();
+            const startTime = performance.now();
+
+            function frame(now) {
+                const t = Math.min((now - startTime) / durationMs, 1.0);
+
+                let seg = stages[0];
+                let nextSeg = stages[stages.length - 1];
+                for (let i = 0; i < stages.length - 1; i++) {
+                    if (t >= stages[i].at && t <= stages[i + 1].at) {
+                        seg = stages[i];
+                        nextSeg = stages[i + 1];
+                        break;
+                    }
+                }
+                const segT = nextSeg.at > seg.at ? (t - seg.at) / (nextSeg.at - seg.at) : 1;
+                const eased = easeInOutQuad(Math.min(Math.max(segT, 0), 1));
+                const eyeOpen = seg.eyeOpen + (nextSeg.eyeOpen - seg.eyeOpen) * eased;
+                setEyeOpenAmount(eyeOpen);
+
+                if (t < 1.0) {
+                    sleepWakeAnimationFrame = requestAnimationFrame(frame);
+                } else {
+                    sleepWakeAnimationFrame = null;
+                    if (onComplete) onComplete();
+                }
+            }
+            sleepWakeAnimationFrame = requestAnimationFrame(frame);
+        }
+
+        // Deliberately not a single smooth climb - closed, a held beat,
+        // partial groggy open, a brief squinty settle, then fully open -
+        // matches a real "waking up" feel rather than a clean fade.
+        // Default duration roughly matches the backend's WAKE_UP_DELAY_SECONDS
+        // (4s), so the animation finishes around when her actual response arrives.
+        function playWakeUpAnimation(durationMs = 4000, onComplete = null) {
+            triggerEmotion('sleeping'); // base expression (brows/mouth/etc) starts from sleeping
+            setEyeOpenAmount(0);
+            const stages = [
+                { at: 0.0,  eyeOpen: 0.0 },
+                { at: 0.35, eyeOpen: 0.0 },
+                { at: 0.55, eyeOpen: 0.35 },
+                { at: 0.75, eyeOpen: 0.3 },
+                { at: 1.0,  eyeOpen: 1.0 },
+            ];
+            runStagedEyeAnimation(stages, durationMs, () => {
+                triggerEmotion(getIdleEmotion()); // hand off cleanly to whatever she should actually be showing now
+                if (onComplete) onComplete();
+            });
+        }
+
+        // Simpler reverse - no grogginess needed, just a smooth close.
+        function playGoToSleepAnimation(durationMs = 1500, onComplete = null) {
+            const stages = [
+                { at: 0.0, eyeOpen: 1.0 },
+                { at: 1.0, eyeOpen: 0.0 },
+            ];
+            runStagedEyeAnimation(stages, durationMs, () => {
+                triggerEmotion('sleeping');
+                if (onComplete) onComplete();
+            });
         }
 
         function triggerEmotion(emotion) {

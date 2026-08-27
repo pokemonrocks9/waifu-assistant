@@ -789,6 +789,91 @@
             text-align: right;
             font-family: var(--font-mono);
         }
+
+        /* ============================================================
+           View routing: #kiosk and #settings are hash-based views within
+           this same page, sharing all the character-loading/websocket/
+           animation code rather than being separate files. Default (no
+           hash) is the existing main app, unchanged. Body gets a
+           view-kiosk or view-settings class; these rules hide/reposition
+           shared elements per view rather than duplicating markup.
+           ============================================================ */
+
+        /* Kiosk: character display only, minimal UI. Touch/pet/poke
+           interactions on the model itself still work - only the
+           surrounding UI chrome is hidden. */
+        body.view-kiosk #character-toggle,
+        body.view-kiosk #character-menu,
+        body.view-kiosk #text-input-container,
+        body.view-kiosk #status-info,
+        body.view-kiosk #test-lipsync {
+            display: none !important;
+        }
+
+        /* Settings: debug access bottom-left, mic centered, version
+           bottom-middle, model info and portal link hidden. No text
+           input/send - this device has no keyboard. */
+        body.view-settings #character-toggle,
+        body.view-settings #status-info,
+        body.view-settings #text-input,
+        body.view-settings #speak-btn,
+        body.view-settings #mobile-menu-btn,
+        body.view-settings #test-lipsync {
+            display: none !important;
+        }
+        body.view-settings #text-input-container {
+            background: none;
+            border: none;
+            box-shadow: none;
+            position: fixed;
+            left: 50%;
+            bottom: 48px;
+            transform: translateX(-50%);
+            width: auto;
+        }
+        body.view-settings #mic-btn {
+            position: static;
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        body.view-settings #mic-btn svg {
+            width: 32px;
+            height: 32px;
+        }
+        #mic-btn .mic-icon-listening { display: none; }
+        #mic-btn.listening .mic-icon-idle { display: none; }
+        #mic-btn.listening .mic-icon-listening { display: inline-block; }
+        #settings-debug-btn {
+            display: none;
+            position: fixed;
+            left: 20px;
+            bottom: 20px;
+            z-index: 50;
+        }
+        body.view-settings #settings-debug-btn {
+            display: block;
+        }
+        #settings-version {
+            display: none;
+            position: fixed;
+            left: 50%;
+            bottom: 20px;
+            transform: translateX(-50%);
+            opacity: 0.5;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            border: 1px solid rgba(103, 232, 249, 0.2);
+            padding: 2px 8px;
+            border-radius: 3px;
+            z-index: 50;
+        }
+        body.view-settings #settings-version {
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -1048,11 +1133,20 @@
 
     <div id="position-display"></div>
 
+    <!-- Settings view only (see CSS) - debug menu access and version display,
+         positioned independently since #character-toggle and #status-info
+         are hidden on this view -->
+    <button id="settings-debug-btn" aria-label="Debug menu" title="Debug menu">⚙️</button>
+    <div id="settings-version"></div>
+
     <!-- Text input -->
     <div id="text-input-container">
         <button id="mobile-menu-btn" aria-label="Open menu">☰</button>
         <input type="text" id="text-input" placeholder="Say something…">
-        <button id="mic-btn" aria-label="Talk" title="Talk">🎤</button>
+        <button id="mic-btn" aria-label="Talk" title="Talk">
+            <svg class="mic-icon-idle" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/><path d="M19 11a1 1 0 0 0-2 0 5 5 0 0 1-10 0 1 1 0 0 0-2 0 7 7 0 0 0 6 6.92V20H9a1 1 0 0 0 0 2h6a1 1 0 0 0 0-2h-2v-2.08A7 7 0 0 0 19 11z"/></svg>
+            <svg class="mic-icon-listening" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+        </button>
         <button id="speak-btn">Send</button>
     </div>
 
@@ -3182,6 +3276,16 @@
                 characterMenu.classList.toggle('open');
             });
 
+            // Settings view only - same panel, different trigger button
+            // (bottom-left, since #character-toggle is hidden on this view)
+            const settingsDebugBtn = document.getElementById('settings-debug-btn');
+            if (settingsDebugBtn) {
+                settingsDebugBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    characterMenu.classList.toggle('open');
+                });
+            }
+
             // Mobile: Toggle menu with button next to chat input
             const mobileMenuBtn = document.getElementById('mobile-menu-btn');
             if (mobileMenuBtn) {
@@ -3620,6 +3724,56 @@
             if (wasAsleep) {
                 playWakeUpAnimation(wakeStyle);
             }
+        }
+
+        // Mic-listening gaze reaction - looks toward the top-right of the
+        // canvas while listening, to visually read as "paying attention" /
+        // listening for a voice command. Uses pixi-live2d-display's own
+        // focus(x, y) API (screen/client pixel coordinates, same space as
+        // pointer events), which drives the model's head/eye-tracking
+        // parameters internally - not a manual parameter tween like the
+        // sleep/wake animations, since this is a simple one-shot look
+        // rather than something needing custom pacing.
+        function lookTowardTopRight() {
+            if (!currentModel || currentCharacter?.renderMode === 'mmd') return;
+            const canvas = document.getElementById('live2d-canvas');
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = rect.left + rect.width * 0.85;
+            const y = rect.top + rect.height * 0.15;
+            try {
+                currentModel.focus(x, y);
+            } catch (err) {
+                // focus() not available on this model/render mode - harmless, just skip
+            }
+        }
+        function resetGaze() {
+            if (!currentModel || currentCharacter?.renderMode === 'mmd') return;
+            const canvas = document.getElementById('live2d-canvas');
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            try {
+                currentModel.focus(rect.left + rect.width / 2, rect.top + rect.height / 2);
+            } catch (err) {
+                // harmless, just skip
+            }
+        }
+
+        // Cross-tab sync for kiosk + settings running on the same device -
+        // e.g. mic lives on the settings screen, but the character is shown
+        // on the kiosk screen, so pressing mic there needs to make the
+        // KIOSK page's character react too. BroadcastChannel is same-origin,
+        // same-device only - if the other page isn't open (or is on a
+        // different device entirely), messages just go nowhere, no error.
+        const syncChannel = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('cpupod-sync') : null;
+        if (syncChannel) {
+            syncChannel.onmessage = (event) => {
+                if (event.data?.type === 'mic-listening-start') {
+                    lookTowardTopRight();
+                } else if (event.data?.type === 'mic-listening-stop') {
+                    resetGaze();
+                }
+            };
         }
 
         // Multi-stage sleep/wake animation via direct Cubism parameter
@@ -4291,6 +4445,7 @@
                     const match = text.match(/const SW_VERSION = '(.+?)'/);
                     if (match && match[1]) {
                         document.getElementById('pod-version').textContent = match[1];
+                        document.getElementById('settings-version').textContent = match[1];
                     }
                 } catch (e) {
                     console.warn('Failed to fetch version from sw.js', e);
@@ -4387,8 +4542,9 @@
             recognition.onstart = () => {
                 isListening = true;
                 micBtn.classList.add('listening');
-                micBtn.textContent = '⏹️';
                 textInput.placeholder = 'Listening...';
+                lookTowardTopRight();
+                syncChannel?.postMessage({ type: 'mic-listening-start' });
             };
 
             recognition.onresult = (event) => {
@@ -4416,8 +4572,9 @@
             recognition.onend = () => {
                 isListening = false;
                 micBtn.classList.remove('listening');
-                micBtn.textContent = '🎤';
                 textInput.placeholder = `Say something to ${currentCharacter?.name || ''}…`;
+                resetGaze();
+                syncChannel?.postMessage({ type: 'mic-listening-stop' });
             };
 
             micBtn.addEventListener('click', () => {
@@ -4489,7 +4646,18 @@
         // Initialize everything
         async function init() {
             console.log('🎭 Initializing Live2D system...');
-            
+
+            // View routing: #kiosk and #settings are hash-based views
+            // sharing this same page/codebase. Default (no recognized hash)
+            // is the existing main app, unchanged.
+            const view = ['kiosk', 'settings'].includes(window.location.hash.replace('#', ''))
+                ? window.location.hash.replace('#', '')
+                : 'main';
+            if (view !== 'main') {
+                document.body.classList.add(`view-${view}`);
+            }
+            console.log(`View: ${view}`);
+
             initPixi();
             initCharacterSelector();
             initTextInput();

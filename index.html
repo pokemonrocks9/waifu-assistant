@@ -887,7 +887,8 @@
                 <div class="control-group" style="display: flex; gap: 8px; flex-wrap: wrap;">
                     <button id="test-sleep-static-btn" class="btn secondary">Show sleeping (static)</button>
                     <button id="test-go-to-sleep-btn" class="btn secondary">Play go-to-sleep animation</button>
-                    <button id="test-wake-up-btn" class="btn secondary">Play wake-up animation</button>
+                    <button id="test-wake-up-natural-btn" class="btn secondary">Play wake-up (natural)</button>
+                    <button id="test-wake-up-sudden-btn" class="btn secondary">Play wake-up (sudden/poked)</button>
                 </div>
             </div>
 
@@ -1653,8 +1654,11 @@
         document.getElementById('test-go-to-sleep-btn').addEventListener('click', () => {
             playGoToSleepAnimation();
         });
-        document.getElementById('test-wake-up-btn').addEventListener('click', () => {
-            playWakeUpAnimation();
+        document.getElementById('test-wake-up-natural-btn').addEventListener('click', () => {
+            playWakeUpAnimation('natural');
+        });
+        document.getElementById('test-wake-up-sudden-btn').addEventListener('click', () => {
+            playWakeUpAnimation('sudden');
         });
 
         document.getElementById('toggle-mmd-lighting').addEventListener('change', (e) => {
@@ -3610,11 +3614,11 @@
         function getIdleEmotion() {
             return isCurrentlyAsleep() ? 'sleeping' : 'neutral';
         }
-        function markRealInteraction() {
+        function markRealInteraction(wakeStyle = 'natural') {
             const wasAsleep = isCurrentlyAsleep();
             lastRealInteractionTime = Date.now();
             if (wasAsleep) {
-                playWakeUpAnimation();
+                playWakeUpAnimation(wakeStyle);
             }
         }
 
@@ -3720,26 +3724,39 @@
             sleepWakeAnimationFrame = requestAnimationFrame(frame);
         }
 
-        // Deliberately not a single smooth climb - a brief held beat (short,
-        // not a dead pause), then a gradual, evenly-paced climb to fully
-        // open - spreading the opening motion across more of the duration
-        // instead of one rushed jump at the end, which read as "fast" by
-        // comparison to the earlier smaller movements. Shorter overall
-        // duration too (was 4s, felt sluggish) - doesn't need to exactly
-        // match the backend's WAKE_UP_DELAY_SECONDS; finishing a beat before
-        // her response arrives reads fine narratively.
-        function playWakeUpAnimation(durationMs = 2800, onComplete = null) {
+        // Two distinct wake styles rather than one generic animation:
+        // - 'natural': slow, gentle multi-stage climb - fits being spoken to
+        //   or messaged, like naturally stirring awake. Slower than the
+        //   previous single version per feedback that it still felt rushed.
+        // - 'sudden': quick, startled eye-snap - fits being poked, a jolt
+        //   rather than a gradual stir.
+        const WAKE_STYLES = {
+            natural: {
+                durationMs: 4200,
+                stages: [
+                    { at: 0.0,  eyeOpen: 0.0 },
+                    { at: 0.1,  eyeOpen: 0.0 },
+                    { at: 0.3,  eyeOpen: 0.2 },
+                    { at: 0.5,  eyeOpen: 0.3 },
+                    { at: 0.68, eyeOpen: 0.4 },
+                    { at: 0.85, eyeOpen: 0.7 },
+                    { at: 1.0,  eyeOpen: 1.0 },
+                ],
+            },
+            sudden: {
+                durationMs: 450,
+                stages: [
+                    { at: 0.0, eyeOpen: 0.0 },
+                    { at: 1.0, eyeOpen: 1.0 },
+                ],
+            },
+        };
+
+        function playWakeUpAnimation(style = 'natural', onComplete = null) {
+            const config = WAKE_STYLES[style] || WAKE_STYLES.natural;
             triggerEmotion('sleeping'); // base expression (brows/mouth/etc) starts from sleeping
             setEyeOpenAmount(0);
-            const stages = [
-                { at: 0.0,  eyeOpen: 0.0 },
-                { at: 0.08, eyeOpen: 0.0 },
-                { at: 0.3,  eyeOpen: 0.3 },
-                { at: 0.55, eyeOpen: 0.35 },
-                { at: 0.8,  eyeOpen: 0.65 },
-                { at: 1.0,  eyeOpen: 1.0 },
-            ];
-            runStagedEyeAnimation(stages, durationMs, () => {
+            runStagedEyeAnimation(config.stages, config.durationMs, () => {
                 triggerEmotion(getIdleEmotion()); // hand off cleanly to whatever she should actually be showing now
                 if (onComplete) onComplete();
             }, true);
@@ -3994,7 +4011,7 @@
             const now = Date.now();
             if (now - lastTouchTime < TOUCH_COOLDOWN_MS) return;
             lastTouchTime = now;
-            markRealInteraction();
+            markRealInteraction('sudden');
 
             // Cancel any leftover reset timer from a previous poke - otherwise it
             // can fire mid-wait on THIS poke (especially LLM-routed zones, which
@@ -4040,7 +4057,7 @@
 
         function handlePetStart(zone) {
             if (petState.active) return;
-            markRealInteraction();
+            markRealInteraction('natural');
             if (pendingExpressionReset) {
                 clearTimeout(pendingExpressionReset);
                 pendingExpressionReset = null;
@@ -4450,7 +4467,7 @@
                 if (!text || !isConnected) return;
 
                 console.log('Sending:', text);
-                markRealInteraction();
+                markRealInteraction('natural');
                 setInteractionsLocked(true);
 
                 ws.send(JSON.stringify({

@@ -3679,7 +3679,7 @@
             }
         }
 
-        function runStagedEyeAnimation(stages, durationMs, onComplete) {
+        function runStagedEyeAnimation(stages, durationMs, onComplete, restoreBlinkOnComplete = true) {
             cancelSleepWakeAnimation();
             suppressAutoBlink();
             const startTime = performance.now();
@@ -3705,7 +3705,15 @@
                     sleepWakeAnimationFrame = requestAnimationFrame(frame);
                 } else {
                     sleepWakeAnimationFrame = null;
-                    restoreAutoBlink();
+                    // Auto-blink is NOT restored after going to sleep - she
+                    // needs to STAY visually asleep, and restoring it would
+                    // immediately snap her eyes back open on the very next
+                    // frame (the blink system's own resting state is open) -
+                    // confirmed as the actual cause of the "sudden open,
+                    // closes again instant" bug. Only the wake-up animation
+                    // should restore it, since that's the one case where she
+                    // should genuinely go back to normal automatic blinking.
+                    if (restoreBlinkOnComplete) restoreAutoBlink();
                     if (onComplete) onComplete();
                 }
             }
@@ -3713,25 +3721,28 @@
         }
 
         // Deliberately not a single smooth climb - a brief held beat (short,
-        // not a dead pause), partial groggy open, a brief squinty settle,
-        // then fully open - matches a real "waking up" feel without reading
-        // as unresponsive lag at the start. Default duration roughly matches
-        // the backend's WAKE_UP_DELAY_SECONDS (4s), so the animation
-        // finishes around when her actual response arrives.
-        function playWakeUpAnimation(durationMs = 4000, onComplete = null) {
+        // not a dead pause), then a gradual, evenly-paced climb to fully
+        // open - spreading the opening motion across more of the duration
+        // instead of one rushed jump at the end, which read as "fast" by
+        // comparison to the earlier smaller movements. Shorter overall
+        // duration too (was 4s, felt sluggish) - doesn't need to exactly
+        // match the backend's WAKE_UP_DELAY_SECONDS; finishing a beat before
+        // her response arrives reads fine narratively.
+        function playWakeUpAnimation(durationMs = 2800, onComplete = null) {
             triggerEmotion('sleeping'); // base expression (brows/mouth/etc) starts from sleeping
             setEyeOpenAmount(0);
             const stages = [
                 { at: 0.0,  eyeOpen: 0.0 },
-                { at: 0.12, eyeOpen: 0.0 },
-                { at: 0.4,  eyeOpen: 0.35 },
-                { at: 0.65, eyeOpen: 0.3 },
+                { at: 0.08, eyeOpen: 0.0 },
+                { at: 0.3,  eyeOpen: 0.3 },
+                { at: 0.55, eyeOpen: 0.35 },
+                { at: 0.8,  eyeOpen: 0.65 },
                 { at: 1.0,  eyeOpen: 1.0 },
             ];
             runStagedEyeAnimation(stages, durationMs, () => {
                 triggerEmotion(getIdleEmotion()); // hand off cleanly to whatever she should actually be showing now
                 if (onComplete) onComplete();
-            });
+            }, true);
         }
 
         // Simpler reverse - no grogginess needed, just a smooth close.
@@ -3743,8 +3754,7 @@
             runStagedEyeAnimation(stages, durationMs, () => {
                 triggerEmotion('sleeping');
                 if (onComplete) onComplete();
-            });
-        }
+            }, false); // keep auto-blink suppressed - she should stay visually asleep
 
         function triggerEmotion(emotion) {
             const mode = currentCharacter?.renderMode || 'live2d';

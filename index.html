@@ -4034,9 +4034,18 @@
         // presence and shows a red indicator if no pong has arrived
         // recently. Generous stale threshold (a bit over 2x the ping
         // interval) so a single missed cycle doesn't falsely flag it.
+        //
+        // This is a function called from init() (not a top-level check run
+        // here) because THIS point in the script executes before init() has
+        // even run - meaning the view-settings class wouldn't be on
+        // document.body yet if this ran as a one-time top-level check here,
+        // and the check would silently see "not settings" every time,
+        // regardless of which view was actually loaded. Confirmed as the
+        // actual reason the indicator never appeared.
         const KIOSK_PING_INTERVAL_MS = 3000;
         const KIOSK_STALE_THRESHOLD_MS = 7000;
-        if (syncChannel && document.body.classList.contains('view-settings')) {
+        function setupKioskHeartbeat() {
+            if (!syncChannel || !document.body.classList.contains('view-settings')) return;
             setInterval(() => syncChannel.postMessage({ type: 'kiosk-presence-ping' }), KIOSK_PING_INTERVAL_MS);
             setInterval(() => {
                 const indicator = document.getElementById('kiosk-disconnected-indicator');
@@ -4979,6 +4988,7 @@
                 document.body.classList.add(`view-${view}`);
             }
             console.log(`View: ${view}`);
+            setupKioskHeartbeat();
 
             initPixi();
             initCharacterSelector();

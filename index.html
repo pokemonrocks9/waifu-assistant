@@ -3777,15 +3777,16 @@
         }
         function resetGaze() {
             if (!currentModel || currentCharacter?.renderMode === 'mmd') return;
+            // Not using .focus() here - its coordinate guess for "neutral"
+            // (canvas center) turned out not to actually correspond to her
+            // true resting eye-level (confirmed: Y stayed looking up even
+            // after "resetting" to canvas-center). Instead, defer to the
+            // app's own already-correct definition of neutral - mouseX/
+            // mouseY = 0 is what the continuous cursor/touch tracking (and
+            // the pet/poke gaze-recenter) already treats as "straight ahead."
             eyeTrackingSuppressed = false; // hand control back to continuous cursor/touch tracking
-            const canvas = document.getElementById('live2d-canvas');
-            if (!canvas) return;
-            const rect = canvas.getBoundingClientRect();
-            try {
-                currentModel.focus(rect.left + rect.width / 2, rect.top + rect.height / 2);
-            } catch (err) {
-                // harmless, just skip
-            }
+            mouseX = 0;
+            mouseY = 0;
         }
 
         // Cross-tab sync for kiosk + settings running on the same device -

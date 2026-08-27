@@ -3655,8 +3655,33 @@
             }
         }
 
+        // Live2D's Cubism framework runs its OWN automatic eye-blink cycle
+        // every frame as part of normal idle animation, writing to these
+        // exact same two parameters independently of anything we script.
+        // Running our custom animation alongside it means two systems
+        // fighting over the same parameter at slightly different frame
+        // timings - confirmed as the cause of erratic/doubled blinking
+        // during the sleep/wake animations. Suppressing it for the
+        // animation's duration and restoring it afterward fixes this.
+        let suppressedEyeBlink = null;
+        function suppressAutoBlink() {
+            const internal = currentModel?.internalModel;
+            if (internal && internal.eyeBlink && suppressedEyeBlink === null) {
+                suppressedEyeBlink = internal.eyeBlink;
+                internal.eyeBlink = null;
+            }
+        }
+        function restoreAutoBlink() {
+            const internal = currentModel?.internalModel;
+            if (internal && suppressedEyeBlink !== null) {
+                internal.eyeBlink = suppressedEyeBlink;
+                suppressedEyeBlink = null;
+            }
+        }
+
         function runStagedEyeAnimation(stages, durationMs, onComplete) {
             cancelSleepWakeAnimation();
+            suppressAutoBlink();
             const startTime = performance.now();
 
             function frame(now) {
@@ -3680,25 +3705,27 @@
                     sleepWakeAnimationFrame = requestAnimationFrame(frame);
                 } else {
                     sleepWakeAnimationFrame = null;
+                    restoreAutoBlink();
                     if (onComplete) onComplete();
                 }
             }
             sleepWakeAnimationFrame = requestAnimationFrame(frame);
         }
 
-        // Deliberately not a single smooth climb - closed, a held beat,
-        // partial groggy open, a brief squinty settle, then fully open -
-        // matches a real "waking up" feel rather than a clean fade.
-        // Default duration roughly matches the backend's WAKE_UP_DELAY_SECONDS
-        // (4s), so the animation finishes around when her actual response arrives.
+        // Deliberately not a single smooth climb - a brief held beat (short,
+        // not a dead pause), partial groggy open, a brief squinty settle,
+        // then fully open - matches a real "waking up" feel without reading
+        // as unresponsive lag at the start. Default duration roughly matches
+        // the backend's WAKE_UP_DELAY_SECONDS (4s), so the animation
+        // finishes around when her actual response arrives.
         function playWakeUpAnimation(durationMs = 4000, onComplete = null) {
             triggerEmotion('sleeping'); // base expression (brows/mouth/etc) starts from sleeping
             setEyeOpenAmount(0);
             const stages = [
                 { at: 0.0,  eyeOpen: 0.0 },
-                { at: 0.35, eyeOpen: 0.0 },
-                { at: 0.55, eyeOpen: 0.35 },
-                { at: 0.75, eyeOpen: 0.3 },
+                { at: 0.12, eyeOpen: 0.0 },
+                { at: 0.4,  eyeOpen: 0.35 },
+                { at: 0.65, eyeOpen: 0.3 },
                 { at: 1.0,  eyeOpen: 1.0 },
             ];
             runStagedEyeAnimation(stages, durationMs, () => {

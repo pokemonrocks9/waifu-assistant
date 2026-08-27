@@ -286,6 +286,15 @@
             cursor: pointer;
             backdrop-filter: blur(16px);
             transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #mic-btn svg {
+            width: 18px;
+            height: 18px;
+            display: block;
         }
 
         #mic-btn:hover {
@@ -846,7 +855,7 @@
         }
         #mic-btn .mic-icon-listening { display: none; }
         #mic-btn.listening .mic-icon-idle { display: none; }
-        #mic-btn.listening .mic-icon-listening { display: inline-block; }
+        #mic-btn.listening .mic-icon-listening { display: block; }
         #settings-debug-btn {
             display: none;
             position: fixed;
@@ -1488,6 +1497,18 @@
         let mouseX = 0;
         let mouseY = 0;
 
+        // Gates mobile touch-based gaze tracking to only apply when she's
+        // genuinely idle - not mid-pet, mid-poke, or mid-conversation.
+        // Desktop mouse tracking is unaffected (stays continuous).
+        function isMobileGazeTrackingActive() {
+            const isMobile = window.innerWidth < 768;
+            if (!isMobile) return false;
+            if (interactionsLocked) return false;
+            if (typeof petState !== 'undefined' && petState?.active) return false;
+            if (typeof lipSyncState !== 'undefined' && lipSyncState?.isSpeaking) return false;
+            return true;
+        }
+
         // Initialize PIXI Application
         function initPixi() {
             const canvas = document.getElementById('live2d-canvas');
@@ -1574,9 +1595,12 @@
                 mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
             });
 
-            // Touch tracking for mobile
+            // Touch tracking for mobile - only follows your finger while
+            // she's otherwise idle (not petting, poking, or mid-conversation).
+            // Desktop mouse tracking above stays continuous/unconditional;
+            // this gate is mobile-specific.
             window.addEventListener('touchmove', (event) => {
-                if (event.touches.length > 0) {
+                if (event.touches.length > 0 && isMobileGazeTrackingActive()) {
                     const touch = event.touches[0];
                     mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
                     mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
@@ -2744,7 +2768,10 @@
             app.ticker.add(currentModelTickerFn);
         }
 
+        let eyeTrackingSuppressed = false;
+
         function updateEyeTracking(model) {
+            if (eyeTrackingSuppressed) return; // mic-gaze reaction is holding the eyes right now - don't fight it
             try {
                 const coreModel = model.internalModel.coreModel;
                 const parameters = coreModel.parameters;
@@ -3738,6 +3765,7 @@
             if (!currentModel || currentCharacter?.renderMode === 'mmd') return;
             const canvas = document.getElementById('live2d-canvas');
             if (!canvas) return;
+            eyeTrackingSuppressed = true; // hold this gaze - don't let continuous cursor/touch tracking fight it
             const rect = canvas.getBoundingClientRect();
             const x = rect.left + rect.width * 0.85;
             const y = rect.top + rect.height * 0.15;
@@ -3749,6 +3777,7 @@
         }
         function resetGaze() {
             if (!currentModel || currentCharacter?.renderMode === 'mmd') return;
+            eyeTrackingSuppressed = false; // hand control back to continuous cursor/touch tracking
             const canvas = document.getElementById('live2d-canvas');
             if (!canvas) return;
             const rect = canvas.getBoundingClientRect();
@@ -4166,6 +4195,8 @@
             if (now - lastTouchTime < TOUCH_COOLDOWN_MS) return;
             lastTouchTime = now;
             markRealInteraction('sudden');
+            mouseX = 0;
+            mouseY = 0;
 
             // Cancel any leftover reset timer from a previous poke - otherwise it
             // can fire mid-wait on THIS poke (especially LLM-routed zones, which
@@ -4212,6 +4243,8 @@
         function handlePetStart(zone) {
             if (petState.active) return;
             markRealInteraction('natural');
+            mouseX = 0;
+            mouseY = 0;
             if (pendingExpressionReset) {
                 clearTimeout(pendingExpressionReset);
                 pendingExpressionReset = null;

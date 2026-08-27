@@ -2773,21 +2773,25 @@
 
         let easedGazeX = 0, easedGazeY = 0; // -1 to 1 range, eased toward mouseX/mouseY each frame
 
+        let lastEyeTrackDebugLog = 0;
+
         function updateEyeTracking(model) {
             const core = model?.internalModel?.coreModel;
-            if (!core || typeof core.setParameterValueById !== 'function') return;
 
-            // Was directly mutating a raw parameters.values[i] array before,
-            // which doesn't actually commit correctly in this library
-            // (confirmed: every other working parameter write in this file -
-            // lip sync, the sleep/wake animation - uses setParameterValueById
-            // instead, never raw array indexing). Also fixes a real range
-            // bug: ParamAngleX/Y (head angle, ~±30 degrees) and
-            // ParamEyeBallX/Y (eyeball position, ~±1 normalized) were both
-            // being fed the identical over-scaled value, which would have
-            // pinned the eyeball parameters at their clamped max/min
-            // regardless of actual cursor position even if the write itself
-            // had worked.
+            // TEMPORARY diagnostics - throttled to roughly once/second so the
+            // console stays readable. Logs exactly where this breaks: is
+            // mouseX/mouseY actually changing? does core/setParameterValueById
+            // exist? does the value actually stick, or does something else
+            // (idle motion, physics) override it after we write it?
+            const now = Date.now();
+            const shouldLog = now - lastEyeTrackDebugLog > 1000;
+            if (shouldLog) lastEyeTrackDebugLog = now;
+
+            if (!core || typeof core.setParameterValueById !== 'function') {
+                if (shouldLog) console.warn('👁️ EYE TRACK DEBUG: no core or setParameterValueById - core exists:', !!core, 'model:', !!model, 'internalModel:', !!model?.internalModel);
+                return;
+            }
+
             easedGazeX += (mouseX - easedGazeX) * 0.1;
             easedGazeY += (mouseY - easedGazeY) * 0.1;
 
@@ -2797,13 +2801,21 @@
                 ['ParamEyeBallX', easedGazeX],
                 ['ParamEyeBallY', easedGazeY],
             ];
+            const results = [];
             for (const [paramId, value] of writes) {
                 try {
                     core.setParameterValueById(paramId, value);
+                    let readBack = 'n/a';
+                    if (typeof core.getParameterValueById === 'function') {
+                        try { readBack = core.getParameterValueById(paramId); } catch (e2) { readBack = 'read-error'; }
+                    }
+                    results.push(`${paramId}: set=${value.toFixed(2)} readback=${readBack}`);
                 } catch (err) {
-                    // This specific param doesn't exist on this model - skip
-                    // just this one, don't abort the rest.
+                    results.push(`${paramId}: WRITE FAILED (${err.message})`);
                 }
+            }
+            if (shouldLog) {
+                console.log(`👁️ EYE TRACK DEBUG: mouseX=${mouseX.toFixed(2)} mouseY=${mouseY.toFixed(2)} gazeLocked=${gazeLocked} | ${results.join(' | ')}`);
             }
         }
 

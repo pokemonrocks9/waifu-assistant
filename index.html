@@ -926,7 +926,7 @@
             display: block;
         }
 
-        #listening-indicator {
+        #action-indicator {
             position: absolute;
             top: 10%;
             right: 8%;
@@ -937,17 +937,18 @@
             transform: translateY(0);
             transition: opacity 0.3s ease;
             z-index: 20;
-            filter: drop-shadow(0 0 8px rgba(244, 114, 182, 0.6));
+            --indicator-glow-rgb: 244, 114, 182; /* default magenta - overridden per icon type in JS */
+            filter: drop-shadow(0 0 8px rgba(var(--indicator-glow-rgb), 0.6));
         }
-        #listening-indicator.visible {
+        #action-indicator.visible {
             opacity: 1;
-            animation: listening-indicator-float 1.8s ease-in-out infinite;
+            animation: action-indicator-float 1.8s ease-in-out infinite;
         }
-        #listening-indicator svg {
+        #action-indicator svg {
             width: 100%;
             height: 100%;
         }
-        @keyframes listening-indicator-float {
+        @keyframes action-indicator-float {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-8px); }
         }
@@ -957,13 +958,7 @@
     <div id="canvas-container">
         <canvas id="live2d-canvas"></canvas>
         <canvas id="mmd-canvas" style="display: none;"></canvas>
-        <div id="listening-indicator">
-            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="11" fill="rgba(244, 114, 182, 0.15)" stroke="var(--magenta)" stroke-width="1.5"/>
-                <path d="M9 9a3 3 0 1 1 4 2.83c-.6.2-1 .77-1 1.42V14" stroke="var(--magenta)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                <circle cx="12" cy="17.5" r="1" fill="var(--magenta)"/>
-            </svg>
-        </div>
+        <div id="action-indicator"></div>
     </div>
 
     <div id="loading">
@@ -3761,6 +3756,18 @@
                     return;
                 }
 
+                if (data.type === 'action_indicator') {
+                    // Backend-driven indicator control, for the command
+                    // system (e.g. showing the music icon while a Jellyfin
+                    // command is being handled).
+                    if (data.show) {
+                        showActionIndicator(data.icon || 'listening');
+                    } else {
+                        hideActionIndicator();
+                    }
+                    return;
+                }
+
                 if (data.type === 'connected') {
                     // Backend tells us upfront whether a greeting is actually
                     // coming - if so, lock now rather than waiting for the
@@ -3966,15 +3973,46 @@
             gazeLocked = false; // hand control back to real cursor/touch input
         }
 
-        // Generic listening indicator - not tied specifically to the mic
-        // button, so it can be reused later for an on-device wake-word
-        // trigger without any changes needed here.
-        function showListeningIndicator() {
-            document.getElementById('listening-indicator')?.classList.add('visible');
+        // Generic action indicator - shows a small floating icon near her
+        // top-right, with the icon/color swappable per action type. Started
+        // as a listening-only indicator; generalized so the same mechanism
+        // can represent other states (music playing, etc) without needing a
+        // separate element/animation system for each one.
+        const ACTION_INDICATOR_ICONS = {
+            listening: {
+                colorVar: 'var(--magenta)',
+                glowRgb: '244, 114, 182',
+                glyph: `<path d="M9 9a3 3 0 1 1 4 2.83c-.6.2-1 .77-1 1.42V14" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="12" cy="17.5" r="1" fill="currentColor" stroke="none"/>`
+            },
+            music: {
+                colorVar: 'var(--cyan)',
+                glowRgb: '103, 232, 249',
+                glyph: `<path d="M9 17V6.5l9-1.8V15" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                        <circle cx="7" cy="17.5" r="2.3" fill="currentColor" stroke="none"/>
+                        <circle cx="16" cy="15.2" r="2.3" fill="currentColor" stroke="none"/>`
+            }
+        };
+
+        function showActionIndicator(type = 'listening') {
+            const el = document.getElementById('action-indicator');
+            if (!el) return;
+            const icon = ACTION_INDICATOR_ICONS[type] || ACTION_INDICATOR_ICONS.listening;
+            el.style.setProperty('--indicator-glow-rgb', icon.glowRgb);
+            el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" style="color: ${icon.colorVar};">
+                <circle cx="12" cy="12" r="11" fill="rgba(${icon.glowRgb}, 0.15)" stroke-width="1.5"/>
+                ${icon.glyph}
+            </svg>`;
+            el.classList.add('visible');
         }
-        function hideListeningIndicator() {
-            document.getElementById('listening-indicator')?.classList.remove('visible');
+        function hideActionIndicator() {
+            document.getElementById('action-indicator')?.classList.remove('visible');
         }
+
+        // Backward-compat wrappers - every existing call site (mic
+        // recognition handlers, cross-tab sync) keeps working unchanged.
+        function showListeningIndicator() { showActionIndicator('listening'); }
+        function hideListeningIndicator() { hideActionIndicator(); }
 
         // Cross-tab sync for kiosk + settings running on the same device -
         // e.g. mic lives on the settings screen, but the character is shown

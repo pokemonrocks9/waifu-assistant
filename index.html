@@ -987,11 +987,6 @@
 
     <div id="error"></div>
 
-    <div id="status-info">
-        <div>Portal link <span id="pod-version" style="opacity: 0.5; font-size: 8px; margin-left: 4px; font-family: var(--font-mono); border: 1px solid rgba(103, 232, 249, 0.2); padding: 1px 3px; border-radius: 3px;"></span></div>
-        <div id="model-status">No model loaded</div>
-    </div>
-
     <button id="test-lipsync">Test voice sync</button>
 
     <!-- Character selector toggle button -->
@@ -1237,6 +1232,10 @@
 
         <div id="character-list">
             <!-- Characters will be populated here -->
+        </div>
+
+        <div style="text-align: center; opacity: 0.5; font-size: 11px; font-family: var(--font-mono); margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--hairline);">
+            v<span id="pod-version"></span>
         </div>
     </div>
 
@@ -2847,7 +2846,7 @@
                 setupModelBehaviors(model);
 
                 // Update status
-                statusDiv.textContent = `Model: ${character.name}`;
+                if (statusDiv) statusDiv.textContent = `Model: ${character.name}`;
                 loadingDiv.style.display = 'none';
 
                 console.log('Live2D model loaded successfully!');

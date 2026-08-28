@@ -1234,7 +1234,6 @@
     </div>
 
     <div id="position-display"></div>
-    <div id="gaze-debug-overlay" style="position: fixed; top: 8px; left: 8px; z-index: 9999; background: rgba(0,0,0,0.85); color: #67e8f9; font-family: monospace; font-size: 11px; padding: 8px; border-radius: 6px; max-width: 90vw; white-space: pre-wrap; pointer-events: none;"></div>
 
     <!-- Settings view only (see CSS) - debug menu access and version display,
          positioned independently since #character-toggle and #status-info
@@ -1606,20 +1605,6 @@
         // it silently broken with no way to disable it.
         let followMeEnabled = localStorage.getItem('compa_follow_me_enabled') === 'true'; // default OFF
 
-        // TEMPORARY on-screen diagnostic - lets the tap-gaze-stuck bug be
-        // read directly off the phone screen, since devtools/console isn't
-        // available on mobile right now. Remove once that bug is confirmed
-        // fixed. Keeps only the last few entries so it doesn't grow
-        // unbounded during a testing session.
-        const gazeDebugLines = [];
-        function logGazeDebug(msg) {
-            const time = new Date().toISOString().slice(11, 23);
-            gazeDebugLines.push(`${time} ${msg}`);
-            if (gazeDebugLines.length > 8) gazeDebugLines.shift();
-            const overlay = document.getElementById('gaze-debug-overlay');
-            if (overlay) overlay.textContent = gazeDebugLines.join('\n');
-        }
-
         // Gates mobile touch-based gaze tracking to only apply when she's
         // genuinely idle - not mid-pet, mid-poke, or mid-conversation.
         // Desktop mouse tracking is unaffected (stays continuous).
@@ -1731,10 +1716,7 @@
             // movement while it's active.
             window.addEventListener('mousemove', (event) => {
                 if (gazeLocked) return;
-                if (hasRealTouchInput) {
-                    logGazeDebug(`mousemove BLOCKED (likely synthetic post-touch event) at x=${event.clientX} y=${event.clientY}`);
-                    return;
-                }
+                if (hasRealTouchInput) return;
                 mouseX = (event.clientX / window.innerWidth) * 2 - 1;
                 mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
             });
@@ -1778,11 +1760,9 @@
             // canvas at all, so no stopPropagation() called afterward can
             // block this from running.
             const resetGazeOnTouchEnd = () => {
-                logGazeDebug(`touchend fired. mouseX=${mouseX.toFixed(2)} mouseY=${mouseY.toFixed(2)} gazeLocked=${gazeLocked}`);
                 if (gazeLocked) return; // don't fight an active mic-gaze reaction
                 mouseX = 0;
                 mouseY = 0;
-                logGazeDebug('reset to 0,0');
             };
             window.addEventListener('touchend', resetGazeOnTouchEnd, true);
             window.addEventListener('touchcancel', resetGazeOnTouchEnd, true);
@@ -4647,21 +4627,17 @@
                         if (match) {
                             zone = match.name;
                             console.log(`Rect zone matched: ${zone} (x=${relX.toFixed(2)}, y=${relY.toFixed(2)})`);
-                            logGazeDebug(`pointerdown: RECT ZONE '${zone}' (x=${relX.toFixed(2)}, y=${relY.toFixed(2)})`);
                         } else {
                             // Still nothing - log position for further calibration
                             console.log(`No zone registered here. Relative position: x=${relX.toFixed(2)}, y=${relY.toFixed(2)} (0,0 = top-left of model, 1,1 = bottom-right)`);
-                            logGazeDebug(`pointerdown: GENUINE MISS (x=${relX.toFixed(2)}, y=${relY.toFixed(2)}) - returning, no poke/pet`);
                             return;
                         }
                     } catch (err) {
                         console.warn('Could not compute relative tap position:', err);
-                        logGazeDebug(`pointerdown: miss + error computing position: ${err.message}`);
                         return;
                     }
                 } else {
                     console.log('Hit zone:', zone);
-                    logGazeDebug(`pointerdown: HIT named zone '${zone}'`);
                 }
 
                 if (PET_ZONES.has(zone)) {

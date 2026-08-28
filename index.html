@@ -3819,6 +3819,23 @@
                     return;
                 }
 
+                if (data.type === 'stop_audio') {
+                    // Definitive halt, distinct from pause - clears the
+                    // source entirely (not just paused-and-resumable) and
+                    // turns off shuffle mode, so nothing quietly starts
+                    // playing again on its own afterward.
+                    const player = document.getElementById('music-player');
+                    if (player) {
+                        player.pause();
+                        player.removeAttribute('src');
+                        player.load();
+                    }
+                    shuffleModeActive = false;
+                    pendingMusicPlay = null;
+                    hideActionIndicator();
+                    return;
+                }
+
                 if (data.type === 'connected') {
                     // Backend tells us upfront whether a greeting is actually
                     // coming - if so, lock now rather than waiting for the

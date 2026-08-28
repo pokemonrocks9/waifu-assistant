@@ -1016,6 +1016,14 @@
                 </label>
             </div>
 
+            <div class="toggle-option">
+                <label>Follow me (mobile gaze tracking)</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="toggle-follow-me">
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+
             <div class="toggle-option" style="margin-bottom: 0;">
                 <label>Show debug settings</label>
                 <label class="toggle-switch">
@@ -1590,10 +1598,18 @@
         let mouseY = 0;
         let gazeLocked = false; // true while a forced gaze (mic-listening reaction) is holding mouseX/mouseY - blocks real cursor/touch input from overwriting it
 
+        // "Follow me" - mobile finger-tracking gaze, toggleable since a
+        // known bug (gaze sometimes sticking after a pure tap with no
+        // drag) can't currently be debugged without mobile console access -
+        // this gives a real off-switch in the meantime rather than leaving
+        // it silently broken with no way to disable it.
+        let followMeEnabled = localStorage.getItem('compa_follow_me_enabled') === 'true'; // default OFF
+
         // Gates mobile touch-based gaze tracking to only apply when she's
         // genuinely idle - not mid-pet, mid-poke, or mid-conversation.
         // Desktop mouse tracking is unaffected (stays continuous).
         function isMobileGazeTrackingActive() {
+            if (!followMeEnabled) return false;
             const isMobile = window.innerWidth < 768;
             if (!isMobile) return false;
             if (interactionsLocked) return false;
@@ -1696,7 +1712,16 @@
             window.addEventListener('touchmove', (event) => {
                 if (gazeLocked) return;
                 if (event.touches.length > 0 && isMobileGazeTrackingActive()) {
+                    // Touch events keep their ORIGINAL target for the whole
+                    // gesture (unlike mouse events, which report whatever's
+                    // currently under the pointer) - so this correctly stays
+                    // "not tracking" for an entire slider drag, not just the
+                    // initial touch point. Only tracks when the touch is
+                    // actually on the canvas, not on UI chrome layered on
+                    // top of/around it.
                     const touch = event.touches[0];
+                    const startTarget = event.target;
+                    if (!startTarget.closest('#canvas-container')) return;
                     mouseX = (touch.clientX / window.innerWidth) * 2 - 1;
                     mouseY = -(touch.clientY / window.innerHeight) * 2 + 1;
                 }
@@ -1942,6 +1967,15 @@
             });
         }
         syncMMDDebugSectionsVisibility();
+
+        const followMeToggle = document.getElementById('toggle-follow-me');
+        if (followMeToggle) {
+            followMeToggle.checked = followMeEnabled;
+            followMeToggle.addEventListener('change', (e) => {
+                followMeEnabled = e.target.checked;
+                localStorage.setItem('compa_follow_me_enabled', followMeEnabled ? 'true' : 'false');
+            });
+        }
 
         document.getElementById('toggle-debug-settings').addEventListener('change', (e) => {
             const panel = document.getElementById('debug-settings-panel');

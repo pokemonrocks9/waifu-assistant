@@ -944,6 +944,9 @@
             opacity: 1;
             animation: action-indicator-float 1.8s ease-in-out infinite;
         }
+        #action-indicator.spinning {
+            animation: action-indicator-spin 3s linear infinite;
+        }
         #action-indicator svg {
             width: 100%;
             height: 100%;
@@ -951,6 +954,10 @@
         @keyframes action-indicator-float {
             0%, 100% { transform: translateY(0); }
             50% { transform: translateY(-8px); }
+        }
+        @keyframes action-indicator-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
         }
     </style>
 </head>
@@ -960,6 +967,11 @@
         <canvas id="mmd-canvas" style="display: none;"></canvas>
         <div id="action-indicator"></div>
     </div>
+
+    <!-- Background music - separate from the TTS voice audio element
+         entirely, so it never interferes with lip sync or the voice
+         pipeline. -->
+    <audio id="music-player" style="display: none;"></audio>
 
     <div id="loading">
         <div class="spinner"></div>
@@ -3768,6 +3780,29 @@
                     return;
                 }
 
+                if (data.type === 'play_audio') {
+                    const player = document.getElementById('music-player');
+                    if (player && data.url) {
+                        player.src = data.url;
+                        currentTrackArtUrl = data.art_url || null;
+                        player.play().catch(err => console.warn('Music playback blocked/failed:', err));
+                        console.log(`🎵 Playing: ${data.title || data.url}`);
+                    }
+                    return;
+                }
+
+                if (data.type === 'pause_audio') {
+                    const player = document.getElementById('music-player');
+                    if (player) {
+                        if (player.paused) {
+                            player.play().catch(err => console.warn('Music resume failed:', err));
+                        } else {
+                            player.pause();
+                        }
+                    }
+                    return;
+                }
+
                 if (data.type === 'connected') {
                     // Backend tells us upfront whether a greeting is actually
                     // coming - if so, lock now rather than waiting for the
@@ -3997,6 +4032,7 @@
         function showActionIndicator(type = 'listening') {
             const el = document.getElementById('action-indicator');
             if (!el) return;
+            el.classList.remove('spinning');
             const icon = ACTION_INDICATOR_ICONS[type] || ACTION_INDICATOR_ICONS.listening;
             el.style.setProperty('--indicator-glow-rgb', icon.glowRgb);
             el.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" style="color: ${icon.colorVar};">
@@ -4005,9 +4041,58 @@
             </svg>`;
             el.classList.add('visible');
         }
-        function hideActionIndicator() {
-            document.getElementById('action-indicator')?.classList.remove('visible');
+
+        // Circular album art that spins continuously like a record, shown
+        // in place of the generic music note icon whenever a track actually
+        // has cover art. Separate from showActionIndicator since this needs
+        // a real <img>, not an SVG glyph, and a different (continuous
+        // rotation, not floating) animation.
+        function showAlbumArtIndicator(imageUrl) {
+            const el = document.getElementById('action-indicator');
+            if (!el) return;
+            el.style.setProperty('--indicator-glow-rgb', '103, 232, 249');
+            el.innerHTML = `<img src="${imageUrl}" alt="" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover; border: 1.5px solid var(--cyan);" onerror="this.parentElement.dispatchEvent(new Event('albumart-load-error'))">`;
+            el.classList.add('visible', 'spinning');
         }
+
+        // Falls back to the generic music icon if the art image genuinely
+        // fails to load (missing/incomplete metadata is common enough in
+        // real libraries that this needs a graceful fallback, not a broken
+        // image icon).
+        document.getElementById('action-indicator')?.addEventListener('albumart-load-error', () => {
+            showActionIndicator('music');
+        });
+
+        function hideActionIndicator() {
+            const el = document.getElementById('action-indicator');
+            el?.classList.remove('visible', 'spinning');
+        }
+
+        // Set by the play_audio handler above whenever a track has known
+        // cover art - null falls back to the generic music note icon.
+        let currentTrackArtUrl = null;
+
+        // Ties the action indicator's visibility to the music player's own
+        // real playback events, instead of a fixed timer (which was the
+        // only option back when execute_command was still a stub with no
+        // actual known duration to key off).
+        (function setupMusicPlayerIndicatorSync() {
+            const player = document.getElementById('music-player');
+            if (!player) return;
+            player.addEventListener('play', () => {
+                if (currentTrackArtUrl) {
+                    showAlbumArtIndicator(currentTrackArtUrl);
+                } else {
+                    showActionIndicator('music');
+                }
+            });
+            player.addEventListener('ended', () => hideActionIndicator());
+            player.addEventListener('pause', () => hideActionIndicator());
+            player.addEventListener('error', () => {
+                console.warn('Music player error:', player.error);
+                hideActionIndicator();
+            });
+        })();
 
         // Backward-compat wrappers - every existing call site (mic
         // recognition handlers, cross-tab sync) keeps working unchanged.

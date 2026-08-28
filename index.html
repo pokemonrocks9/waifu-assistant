@@ -3781,12 +3781,28 @@
                 }
 
                 if (data.type === 'play_audio') {
-                    const player = document.getElementById('music-player');
-                    if (player && data.url) {
-                        player.src = data.url;
-                        currentTrackArtUrl = data.art_url || null;
-                        player.play().catch(err => console.warn('Music playback blocked/failed:', err));
-                        console.log(`🎵 Playing: ${data.title || data.url}`);
+                    // Discard if a newer request has already been committed
+                    // to - closes a real race between endless shuffle's
+                    // auto-advance and a fresh explicit request landing
+                    // close together, where a simple last-write-wins could
+                    // let the wrong (older) one win depending on timing.
+                    if (typeof data.sequence === 'number' && data.sequence < latestMusicSequence) {
+                        console.log(`🎵 Discarding stale play_audio (seq ${data.sequence} < ${latestMusicSequence})`);
+                        return;
+                    }
+                    if (typeof data.sequence === 'number') latestMusicSequence = data.sequence;
+
+                    if (lipSyncState.isSpeaking) {
+                        // Defer until she's actually finished speaking -
+                        // starting music right away here was causing her
+                        // spoken acknowledgment to overlap with the track
+                        // starting, since this message can arrive well
+                        // before her voice audio has actually finished
+                        // playing. Picked up in playAudioWithLipSync's
+                        // onended once she's genuinely done.
+                        pendingMusicPlay = { url: data.url, title: data.title, artUrl: data.art_url };
+                    } else {
+                        startMusicPlayback(data.url, data.title, data.art_url);
                     }
                     return;
                 }
@@ -4072,6 +4088,36 @@
         // cover art - null falls back to the generic music note icon.
         let currentTrackArtUrl = null;
 
+        // Endless shuffle - once any track starts playing (specific request
+        // or random), keep the "radio" going by requesting another random
+        // track whenever the current one ends, rather than stopping after
+        // one song. Stays true across pause/resume (pausing doesn't fire
+        // 'ended', so shuffle naturally stays dormant until resumed rather
+        // than needing separate handling) - only actually stops requesting
+        // more tracks if this flag itself gets set false somewhere.
+        let shuffleModeActive = false;
+
+        // Highest music-playback sequence number seen so far - used to
+        // discard a stale play_audio message (see the handler above) if it
+        // arrives after something more recent has already been committed to.
+        let latestMusicSequence = -1;
+
+        // Holds a play_audio request that arrived while she was still
+        // speaking - picked up and actually started once her voice audio's
+        // onended fires (see playAudioWithLipSync), instead of starting
+        // immediately and overlapping with her acknowledgment.
+        let pendingMusicPlay = null;
+
+        function startMusicPlayback(url, title, artUrl) {
+            const player = document.getElementById('music-player');
+            if (!player || !url) return;
+            player.src = url;
+            currentTrackArtUrl = artUrl || null;
+            shuffleModeActive = true; // any playback (specific request or random) keeps the "radio" going until paused
+            player.play().catch(err => console.warn('Music playback blocked/failed:', err));
+            console.log(`🎵 Playing: ${title || url}`);
+        }
+
         // Ties the action indicator's visibility to the music player's own
         // real playback events, instead of a fixed timer (which was the
         // only option back when execute_command was still a stub with no
@@ -4086,7 +4132,17 @@
                     showActionIndicator('music');
                 }
             });
-            player.addEventListener('ended', () => hideActionIndicator());
+            player.addEventListener('ended', () => {
+                if (shuffleModeActive && ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'request_next_track' }));
+                    // Don't hide the indicator here - the next play_audio
+                    // response will keep it showing (with the new track's
+                    // art), so hiding it now would just cause a visible
+                    // flicker between songs.
+                } else {
+                    hideActionIndicator();
+                }
+            });
             player.addEventListener('pause', () => hideActionIndicator());
             player.addEventListener('error', () => {
                 console.warn('Music player error:', player.error);
@@ -4857,6 +4913,15 @@
 
                 if (document.body.classList.contains('view-kiosk')) {
                     syncChannel?.postMessage({ type: 'kiosk-speaking-end' });
+                }
+
+                // She's genuinely done speaking now - if a play_audio
+                // request came in while she was still talking, this is
+                // where it actually starts, instead of overlapping with
+                // her acknowledgment.
+                if (pendingMusicPlay) {
+                    startMusicPlayback(pendingMusicPlay.url, pendingMusicPlay.title, pendingMusicPlay.artUrl);
+                    pendingMusicPlay = null;
                 }
 
                 // If a character switch was flagged on this response, she's
